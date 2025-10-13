@@ -50,127 +50,51 @@ Common primitives and what they do
   - `rop.Success(value)` / `rop.Fail[T](err)` / `rop.Cancel[T](err)`
   - Inspect with `IsSuccess()`, `IsCancel()`, `Err()`, `Result()`
 
-Operations (with `lite`-style examples)
+Operations (short snippets)
 
-- Validate (validate input data): run a predicate that returns `(bool, string)`. On false the result becomes a failure with the provided message.
+Below are compact, single-line snippets showing common `lite` usage. Full runnable examples are in `examples/lite_examples`.
 
-```go
-// simple validator for non-empty strings
-func notEmpty(_ context.Context, s string) (bool, string) {
-    if s == "" { return false, "empty" }
-    return true, ""
-}
-
-out := core.FromChanMany(context.Background(),
-    lite.Run(context.Background(), core.ToChanManyResults(context.Background(), []string{"a", "", "c"}),
-        lite.Validate(notEmpty), 2),
-)
-// out -> ["a", <fail:"empty">, "c"]
-```
-
-Try it locally
-
-The `examples/lite_examples` folder includes a runnable Go example that demonstrates Validate, Try, Turnout and Finally. From the repository root run:
-
-```powershell
-go run ./examples/lite_examples
-```
-
-The example prints final values produced by the pipeline.
-
-- Switch (convert a successful input result into another Result, possibly a failure): run a function that returns `rop.Result[Out]`.
+- Validate:
 
 ```go
-func toNumber(_ context.Context, s string) rop.Result[int] {
-    if s == "bad" { return rop.Fail[int](fmt.Errorf("bad input")) }
-    n, _ := strconv.Atoi(s)
-    return rop.Success(n)
-}
-
-out := core.FromChanMany(context.Background(),
-    lite.Run(context.Background(), core.ToChanManyResults(context.Background(), []string{"1","bad","3"}),
-        lite.Switch(toNumber), 2),
-)
-// bad -> fail, others -> success
+lite.Validate(func(ctx context.Context, s string) (bool, string) { return s!="", "empty" })
 ```
 
-- Map (convert a successful result value to another success value).
+- Switch:
 
 ```go
-out := core.FromChanMany(context.Background(),
-    lite.Run(context.Background(), core.ToChanManyResults(context.Background(), []int{1,2,3}),
-        lite.Map(func(_ context.Context, n int) int { return n * 2 }), 2),
-)
-// -> [2,4,6]
+lite.Switch(func(ctx context.Context, s string) rop.Result[int] { return rop.Success(1) })
 ```
 
-- DoubleMap (convert both success and failure results to another type; also handles cancel).
+- Map:
 
 ```go
-handlers := mass.FinallyHandlers[int, string]{
-    OnSuccess: func(_ context.Context, v int) string { return fmt.Sprintf("ok:%d", v) },
-    OnError: func(_ context.Context, err error) string { return "err:" + err.Error() },
-    OnCancel: func(_ context.Context, err error) string { return "cancel" },
-}
-
-out := core.FromChanMany(context.Background(),
-    lite.Finally(context.Background(),
-        lite.Run(context.Background(), core.ToChanManyResults(context.Background(), []int{1,2}), lite.DoubleMap(func(_ context.Context, r rop.Result[int]) string {
-            if r.IsSuccess() { return fmt.Sprintf("ok:%d", r.Result()) }
-            return "err" // simplified
-        }), 2),
-    , handlers),
-)
+lite.Map(func(ctx context.Context, n int) int { return n*2 })
 ```
 
-- Tee (side-effect on success): run a function for its side-effects but continue passing the original success value.
+- DoubleMap:
 
 ```go
-out := core.FromChanMany(context.Background(),
-    lite.Run(context.Background(), core.ToChanManyResults(context.Background(), []int{1,2}),
-        lite.Tee(func(_ context.Context, n int) { fmt.Println("seen", n) }), 2),
-)
+lite.DoubleMap(func(ctx context.Context, s string) string { return s }, func(ctx context.Context, err error) string { return "err" }, func(ctx context.Context, err error) string { return "cancel" })
 ```
 
-- DoubleTee (side-effect for both success and failure, also receives cancel): similar to `Tee` but gets the full `rop.Result[T]` for inspection.
+- Tee / DoubleTee:
 
 ```go
-out := core.FromChanMany(context.Background(),
-    lite.Run(context.Background(), core.ToChanManyResults(context.Background(), []int{1,2}),
-        lite.DoubleTee(func(_ context.Context, r rop.Result[int]) { if r.IsSuccess() { fmt.Println("ok", r.Result()) } else { fmt.Println("err/cancel") } }), 2),
-)
+lite.Tee(func(ctx context.Context, r rop.Result[int]) { /* side effect */ })
+lite.DoubleTee(func(ctx context.Context, v int) {}, func(ctx context.Context, err error) {}, func(ctx context.Context, err error) {})
 ```
 
-- Try (execute a function that returns a value and error): on error, the stage emits a failure result; on success, a success result.
+- Try:
 
 ```go
-func maybeFail(_ context.Context, n int) (int, error) {
-    if n%2 == 0 { return 0, fmt.Errorf("even") }
-    return n, nil
-}
-
-out := core.FromChanMany(context.Background(),
-    lite.Run(context.Background(), core.ToChanManyResults(context.Background(), []int{1,2,3}),
-        lite.Try(maybeFail), 2),
-)
-// -> success for 1 and 3, fail for 2
+lite.Try(func(ctx context.Context, s string) (int, error) { return strconv.Atoi(s) })
 ```
 
-- Finally (prepare the output values of the pipeline by reducing Result[T] into final values)
+- Finally:
 
 ```go
-handlers := mass.FinallyHandlers[int, string]{
-    OnSuccess: func(_ context.Context, v int) string { return fmt.Sprintf("val:%d", v) },
-    OnError: func(_ context.Context, err error) string { return "bad" },
-    OnCancel: func(_ context.Context, err error) string { return "cancelled" },
-}
-
-out := core.FromChanMany(context.Background(),
-    lite.Finally(context.Background(),
-        lite.Run(context.Background(), core.ToChanManyResults(context.Background(), []int{1,2}), lite.Map(func(_ context.Context, n int) int { return n + 1 }), 2),
-    , handlers),
-)
-// out -> ["val:2","val:3"]
+lite.Finally(ctx, inCh, mass.FinallyHandlers[In, Out]{ OnSuccess: ... })
 ```
 
 Workers and execution patterns
