@@ -4,6 +4,18 @@ Lightweight, composable primitives for building robust synchronous and concurren
 
 This library centers around a typed `Result[T]` that carries either a value or an error (and supports cancellations), plus small, testable building blocks to compose steps in single-value flows (`solo`), channel-based/concurrent flows (`mass`), and ergonomic helpers (`lite`).
 
+## Overview
+
+Railway Oriented Programming is a functional programming pattern for handling errors in a clean and composable way. This Go library implements ROP principles using generics, allowing you to build robust error handling pipelines.
+
+## Core Concepts
+
+Railway Oriented Programming visualizes program flow as a railway track:
+
+- Success Track: When operations succeed, they continue along the main track.
+- Failure Track: When operations fail, they switch to a parallel error track.
+
+
 ### Install
 
 ```bash
@@ -62,10 +74,10 @@ import (
     "fmt"
     "strings"
 
-    "rop2/pkg/rop"
-    "rop2/pkg/rop/core"
-    "rop2/pkg/rop/lite"
-    "rop2/pkg/rop/mass"
+    "github.com/ib-77/rop3/pkg/rop"
+    "github.com/ib-77/rop3/pkg/rop/core"
+    "github.com/ib-77/rop3/pkg/rop/lite"
+    "github.com/ib-77/rop3/pkg/rop/mass"
 )
 
 func processRequest(urls []string) []string {
@@ -136,15 +148,6 @@ Notes:
 
 ---
 
-## Minimal solo example
-
-```go
-input := rop.Success(41)
-out := solo.Map(context.Background(), input, func(_ context.Context, n int) int { return n + 1 })
-if out.IsSuccess() { fmt.Println(out.Result()) } // 42
-```
-
----
 
 ## License
 
