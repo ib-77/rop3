@@ -121,7 +121,7 @@ out := core.FromChanMany(context.Background(),
 )
 ```
 
-## Custom & cancellation
+## Cancellation
 
 The `custom` package provides helper wrappers around `lite`/`mass` that let you supply cancellation-aware handlers and utilities to "cancel" or drain remaining results when a context is cancelled.
 
