@@ -182,19 +182,26 @@ import (
     "github.com/ib-77/rop3/pkg/rop/mass"
 )
 
+func main() {
+    urls := []string{
+        "https://www.example.com",
+        "invalid-url",
+        "https://www.test.org",
+    }
+
+    out := processRequest(urls)
+    for i, v := range out {
+        fmt.Printf("%d: %s -> %s\n", i+1, urls[i], v)
+    }
+}
+
 func processRequest(urls []string) []string {
     ctx := context.Background()
 
     finallyHandlers := mass.FinallyHandlers[int, string]{
-        OnSuccess: func(ctx context.Context, r int) string {
-            return fmt.Sprintf("title length: %d", r)
-        },
-        OnError: func(ctx context.Context, err error) string {
-            return "invalid"
-        },
-        OnCancel: func(ctx context.Context, err error) string {
-            return "invalid"
-        },
+        OnSuccess: func(ctx context.Context, r int) string { return fmt.Sprintf("title length: %d", r) },
+        OnError:   func(ctx context.Context, err error) string { return "invalid" },
+        OnCancel:  func(ctx context.Context, err error) string { return "invalid" },
     }
 
     return core.FromChanMany(ctx,
