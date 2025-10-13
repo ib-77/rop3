@@ -121,6 +121,34 @@ out := core.FromChanMany(context.Background(),
 )
 ```
 
+## Custom & cancellation
+
+The `custom` package provides helper wrappers around `lite`/`mass` that let you supply cancellation-aware handlers and utilities to "cancel" or drain remaining results when a context is cancelled.
+
+Key points:
+- `custom.Run` / `custom.Turnout` accept `core.CancellationHandlers` so you can control what happens on cancellation (unprocessed, processed, or whole-stream cancellation).
+- The `custom/cancels.go` helpers like `CancelRemainingResults`, `CancelRemainingValue`, `CancelResults` and `CancelRemainingValues` make it easy to drain or convert remaining inputs when cancellation happens.
+- Toggle processing remaining items with `core.WithProcessOptions(ctx, true)` — when enabled, the cancel helpers will emit corresponding canceled outputs for remaining items.
+
+Compact example (wire up cancel handlers):
+
+```go
+ctx = core.WithProcessOptions(ctx, true) // enable draining remaining items on cancel
+handlers := core.CancellationHandlers[string, string]{
+    OnCancel: func(ctx context.Context, inCh <-chan rop.Result[string], outCh chan<- rop.Result[string]) {
+        custom.CancelResults(ctx, inCh, outCh)
+    },
+    OnCancelUnprocessed: func(ctx context.Context, in rop.Result[string], outCh chan<- rop.Result[string]) {
+        custom.CancelRemainingResult(ctx, in, outCh)
+    },
+}
+
+out := custom.Run(ctx, core.ToChanManyResults(ctx, inputs), custom.Validate(validateFn, nil), handlers, nil, 2)
+```
+
+This pattern gives you fine-grained control over pipeline behavior when cancellation occurs (emit cancel markers, map to final values, or simply drain remaining inputs).
+
+
 - Single-worker execution: run the pipeline with one worker using `lite.Run(..., 1)`. This is useful for deterministic, ordered processing or when parallelism is not desired.
 
 ```go
@@ -132,7 +160,7 @@ out := core.FromChanMany(context.Background(),
 
 
 
-## Example: URL processing pipeline (from tests/processRequest)
+## Example: URL processing pipeline
 
 The example below mirrors `tests/pipeline_test.go` and demonstrates building a concurrent pipeline that:
 - Validates input URLs
