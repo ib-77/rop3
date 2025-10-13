@@ -3,10 +3,10 @@ package tests
 import (
 	"context"
 	"fmt"
-	"rop2/pkg/rop"
-	"rop2/pkg/rop/core"
-	"rop2/pkg/rop/lite"
-	"rop2/pkg/rop/mass"
+	"github.com/ib-77/rop3/pkg/rop"
+	"github.com/ib-77/rop3/pkg/rop/core"
+	"github.com/ib-77/rop3/pkg/rop/lite"
+	"github.com/ib-77/rop3/pkg/rop/mass"
 	"strings"
 	"testing"
 
@@ -31,7 +31,7 @@ func TestURLProcessingDirectly(t *testing.T) {
 	}
 
 	// Process URLs directly
-	results := processInOneCall(urls) //processURLsDirectly(urls)
+	results := processRequest(urls)
 
 	// Print results for inspection
 	fmt.Println("Test Results:")
@@ -59,7 +59,7 @@ func TestURLProcessingDirectly(t *testing.T) {
 	assert.Equal(t, 2, invalidCount)
 }
 
-func processInOneCall(urls []string) []string {
+func processRequest(urls []string) []string {
 	ctx := context.Background()
 
 	finallyHandlers := mass.FinallyHandlers[int, string]{

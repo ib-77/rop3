@@ -3,8 +3,8 @@ package core
 import (
 	"context"
 	"fmt"
-	"rop2/pkg/rop"
-	"rop2/pkg/rop/solo"
+	"github.com/ib-77/rop3/pkg/rop"
+	"github.com/ib-77/rop3/pkg/rop/solo"
 	"sync"
 )
 

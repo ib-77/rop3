@@ -3,8 +3,8 @@ package custom
 import (
 	"context"
 	"errors"
-	"rop2/pkg/rop"
-	"rop2/pkg/rop/core"
+	"github.com/ib-77/rop3/pkg/rop"
+	"github.com/ib-77/rop3/pkg/rop/core"
 )
 
 var ErrCancelled = errors.New("operation cancelled")

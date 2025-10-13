@@ -2,8 +2,8 @@ package mass
 
 import (
 	"context"
-	"rop2/pkg/rop"
-	"rop2/pkg/rop/solo"
+	"github.com/ib-77/rop3/pkg/rop"
+	"github.com/ib-77/rop3/pkg/rop/solo"
 )
 
 func Validating[T any](ctx context.Context, input rop.Result[T],

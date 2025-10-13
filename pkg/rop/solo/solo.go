@@ -3,7 +3,7 @@ package solo
 import (
 	"context"
 	"errors"
-	"rop2/pkg/rop"
+	"github.com/ib-77/rop3/pkg/rop"
 )
 
 func Succeed[T any](input T) rop.Result[T] {

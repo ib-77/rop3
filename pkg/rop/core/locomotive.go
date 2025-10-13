@@ -2,7 +2,7 @@ package core
 
 import (
 	"context"
-	"rop2/pkg/rop"
+	"github.com/ib-77/rop3/pkg/rop"
 	"sync"
 )
 

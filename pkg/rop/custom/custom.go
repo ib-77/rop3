@@ -2,9 +2,9 @@ package custom
 
 import (
 	"context"
-	"rop2/pkg/rop"
-	"rop2/pkg/rop/core"
-	"rop2/pkg/rop/mass"
+	"github.com/ib-77/rop3/pkg/rop"
+	"github.com/ib-77/rop3/pkg/rop/core"
+	"github.com/ib-77/rop3/pkg/rop/mass"
 	"sync"
 )
 
