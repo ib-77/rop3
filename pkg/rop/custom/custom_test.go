@@ -173,7 +173,7 @@ func TestTransform_WithHandlers(t *testing.T) {
 	}
 }
 
-// Test Single function
+// Test RunSingle function
 func TestSequential_OrderPreservation(t *testing.T) {
 	t.Parallel()
 
@@ -210,7 +210,7 @@ func TestSequential_OrderPreservation(t *testing.T) {
 		return output
 	}
 
-	resultCh := Single(ctx, core.ToChanManyResults(ctx, input), processor, handlers, onSuccess)
+	resultCh := RunSingle(ctx, core.ToChanManyResults(ctx, input), processor, handlers, onSuccess)
 
 	var results []int
 	for result := range resultCh {
@@ -223,7 +223,7 @@ func TestSequential_OrderPreservation(t *testing.T) {
 		t.Errorf("Expected %d results, got %d", len(input), len(results))
 	}
 
-	// Single should maintain order even with different processing times
+	// RunSingle should maintain order even with different processing times
 	mu.Lock()
 	for i, expected := range input {
 		if i < len(processOrder) && processOrder[i] != expected {

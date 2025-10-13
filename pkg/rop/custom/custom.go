@@ -2,10 +2,11 @@ package custom
 
 import (
 	"context"
+	"sync"
+
 	"github.com/ib-77/rop3/pkg/rop"
 	"github.com/ib-77/rop3/pkg/rop/core"
 	"github.com/ib-77/rop3/pkg/rop/mass"
-	"sync"
 )
 
 func Run[T any](ctx context.Context, inputCh <-chan rop.Result[T],
@@ -50,7 +51,7 @@ func Turnout[In, Out any](ctx context.Context, inputCh <-chan rop.Result[In],
 	return out
 }
 
-func Single[T any](ctx context.Context, inputCh <-chan rop.Result[T],
+func RunSingle[T any](ctx context.Context, inputCh <-chan rop.Result[T],
 	engine func(ctx context.Context, input rop.Result[T]) <-chan rop.Result[T],
 	handlers core.CancellationHandlers[T, T],
 	onSuccess func(ctx context.Context, in rop.Result[T])) <-chan rop.Result[T] {

@@ -2,19 +2,9 @@
 
 Lightweight, composable primitives for building robust synchronous and concurrent processing pipelines in Go using the Railway Oriented Programming pattern.
 
-This library centers around a typed `Result[T]` that carries either a value or an error (and supports cancellations), plus small, testable building blocks to compose steps in single-value flows (`solo`), channel-based/concurrent flows (`mass`), and ergonomic helpers (`lite`).
-
 ## Overview
 
 Railway Oriented Programming is a functional programming pattern for handling errors in a clean and composable way. This Go library implements ROP principles using generics, allowing you to build robust error handling pipelines.
-
-## Core Concepts
-
-Railway Oriented Programming visualizes program flow as a railway track:
-
-- Success Track: When operations succeed, they continue along the main track.
-- Failure Track: When operations fail, they switch to a parallel error track.
-
 
 ### Install
 
@@ -38,25 +28,185 @@ import (
 
 ## Core concepts
 
-- **Result[T]**: a typed container that can be success, failure, or cancel.
+Railway Oriented Programming visualizes program flow as a railway track:
+
+- Success Track: When operations succeed, they continue along the main track.
+- Failure Track: When operations fail, they switch to a parallel error track.
+
+Diagram (simplified):
+
+![ROP diagram](assets/diagram.svg)
+
+This repository centers around a typed `Result[T]` that carries either a value, an error (fail), or a cancel signal. The package split is roughly:
+
+- `solo`: single-value, synchronous composition helpers
+- `mass`: channel-based building blocks that lift `solo` operations over channels
+- `lite`: ergonomic wrappers around `mass` to simplify common patterns and set up multi-worker stages
+- `core`: utilities for channel IO and worker orchestration
+
+Common primitives and what they do
+
+- Result[T]: a typed container that can be success, failure, or cancel.
   - `rop.Success(value)` / `rop.Fail[T](err)` / `rop.Cancel[T](err)`
   - Inspect with `IsSuccess()`, `IsCancel()`, `Err()`, `Result()`
 
-- **solo**: single-value, synchronous composition helpers.
-  - `solo.Validate`, `solo.Map`, `solo.Switch`, `solo.Try`, `solo.Finally`, `solo.Tee`, `solo.DoubleMap`, `solo.DoubleTee`.
+Operations (with `lite`-style examples)
 
-- **mass**: channel-based building blocks that lift `solo` operations over channels for pipeline stages.
-  - `mass.Validating`, `mass.Mapping`, `mass.Switching`, `mass.Trying`, `mass.Teeing`, `mass.DoubleMapping`, `mass.DoubleTeeing`, `mass.Finalizing`.
+- Validate (validate input data): run a predicate that returns `(bool, string)`. On false the result becomes a failure with the provided message.
 
-- **lite**: ergonomic wrappers around `mass` to simplify common patterns and set up multi-worker stages.
-  - `lite.Run`, `lite.Turnout`, `lite.Validate`, `lite.Map`, `lite.Switch`, `lite.Try`, `lite.Finally`, `lite.Tee`, `lite.DoubleMap`, `lite.DoubleTee`.
+```go
+// simple validator for non-empty strings
+func notEmpty(_ context.Context, s string) (bool, string) {
+    if s == "" { return false, "empty" }
+    return true, ""
+}
 
-- **core**: utilities for channel IO and worker orchestration.
-  - `core.ToChanMany`, `core.ToChanManyResults`, `core.FromChanMany`
-  - `core.Locomotive` powers the multi-worker execution under the hood
-  - `core.WithWorkerOptions`, `core.WithProcessOptions` for optional runtime tuning
+out := core.FromChanMany(context.Background(),
+    lite.Run(context.Background(), core.ToChanManyResults(context.Background(), []string{"a", "", "c"}),
+        lite.Validate(notEmpty), 2),
+)
+// out -> ["a", <fail:"empty">, "c"]
+```
 
----
+Try it locally
+
+The `examples/lite_examples` folder includes a runnable Go example that demonstrates Validate, Try, Turnout and Finally. From the repository root run:
+
+```powershell
+go run ./examples/lite_examples
+```
+
+The example prints final values produced by the pipeline.
+
+- Switch (convert a successful input result into another Result, possibly a failure): run a function that returns `rop.Result[Out]`.
+
+```go
+func toNumber(_ context.Context, s string) rop.Result[int] {
+    if s == "bad" { return rop.Fail[int](fmt.Errorf("bad input")) }
+    n, _ := strconv.Atoi(s)
+    return rop.Success(n)
+}
+
+out := core.FromChanMany(context.Background(),
+    lite.Run(context.Background(), core.ToChanManyResults(context.Background(), []string{"1","bad","3"}),
+        lite.Switch(toNumber), 2),
+)
+// bad -> fail, others -> success
+```
+
+- Map (convert a successful result value to another success value).
+
+```go
+out := core.FromChanMany(context.Background(),
+    lite.Run(context.Background(), core.ToChanManyResults(context.Background(), []int{1,2,3}),
+        lite.Map(func(_ context.Context, n int) int { return n * 2 }), 2),
+)
+// -> [2,4,6]
+```
+
+- DoubleMap (convert both success and failure results to another type; also handles cancel).
+
+```go
+handlers := mass.FinallyHandlers[int, string]{
+    OnSuccess: func(_ context.Context, v int) string { return fmt.Sprintf("ok:%d", v) },
+    OnError: func(_ context.Context, err error) string { return "err:" + err.Error() },
+    OnCancel: func(_ context.Context, err error) string { return "cancel" },
+}
+
+out := core.FromChanMany(context.Background(),
+    lite.Finally(context.Background(),
+        lite.Run(context.Background(), core.ToChanManyResults(context.Background(), []int{1,2}), lite.DoubleMap(func(_ context.Context, r rop.Result[int]) string {
+            if r.IsSuccess() { return fmt.Sprintf("ok:%d", r.Result()) }
+            return "err" // simplified
+        }), 2),
+    , handlers),
+)
+```
+
+- Tee (side-effect on success): run a function for its side-effects but continue passing the original success value.
+
+```go
+out := core.FromChanMany(context.Background(),
+    lite.Run(context.Background(), core.ToChanManyResults(context.Background(), []int{1,2}),
+        lite.Tee(func(_ context.Context, n int) { fmt.Println("seen", n) }), 2),
+)
+```
+
+- DoubleTee (side-effect for both success and failure, also receives cancel): similar to `Tee` but gets the full `rop.Result[T]` for inspection.
+
+```go
+out := core.FromChanMany(context.Background(),
+    lite.Run(context.Background(), core.ToChanManyResults(context.Background(), []int{1,2}),
+        lite.DoubleTee(func(_ context.Context, r rop.Result[int]) { if r.IsSuccess() { fmt.Println("ok", r.Result()) } else { fmt.Println("err/cancel") } }), 2),
+)
+```
+
+- Try (execute a function that returns a value and error): on error, the stage emits a failure result; on success, a success result.
+
+```go
+func maybeFail(_ context.Context, n int) (int, error) {
+    if n%2 == 0 { return 0, fmt.Errorf("even") }
+    return n, nil
+}
+
+out := core.FromChanMany(context.Background(),
+    lite.Run(context.Background(), core.ToChanManyResults(context.Background(), []int{1,2,3}),
+        lite.Try(maybeFail), 2),
+)
+// -> success for 1 and 3, fail for 2
+```
+
+- Finally (prepare the output values of the pipeline by reducing Result[T] into final values)
+
+```go
+handlers := mass.FinallyHandlers[int, string]{
+    OnSuccess: func(_ context.Context, v int) string { return fmt.Sprintf("val:%d", v) },
+    OnError: func(_ context.Context, err error) string { return "bad" },
+    OnCancel: func(_ context.Context, err error) string { return "cancelled" },
+}
+
+out := core.FromChanMany(context.Background(),
+    lite.Finally(context.Background(),
+        lite.Run(context.Background(), core.ToChanManyResults(context.Background(), []int{1,2}), lite.Map(func(_ context.Context, n int) int { return n + 1 }), 2),
+    , handlers),
+)
+// out -> ["val:2","val:3"]
+```
+
+Workers and execution patterns
+
+The `lite` package provides small helpers to run stages with worker pools. Here are the common worker patterns:
+
+- Run: execute a stage over an input channel of `Result[T]` without changing the result type. Use multiple workers to parallelize processing.
+
+```go
+out := core.FromChanMany(context.Background(),
+    lite.Run(context.Background(), core.ToChanManyResults(context.Background(), []int{1,2,3}),
+        lite.Tee(func(_ context.Context, n int) { fmt.Println("processing", n) }), 3), // 3 workers
+)
+```
+
+- Turnout: execute a stage that changes the underlying value type (e.g., from string to int). This is used when a stage needs to change the pipeline's payload type.
+
+```go
+out := core.FromChanMany(context.Background(),
+    lite.Turnout(context.Background(),
+        lite.Run(context.Background(), core.ToChanManyResults(context.Background(), []string{"1","2"}),
+            lite.Switch(toNumber), 2), // Turnout wraps a Run that changes type
+    , 2),
+)
+```
+
+- Single-worker execution: run the pipeline with one worker using `lite.Run(..., 1)`. This is useful for deterministic, ordered processing or when parallelism is not desired.
+
+```go
+out := core.FromChanMany(context.Background(),
+    lite.Run(context.Background(), core.ToChanManyResults(context.Background(), []int{1,2,3}),
+        lite.Map(func(_ context.Context, n int) int { return n * 10 }), 1), // one worker
+)
+```
+
+
 
 ## Example: URL processing pipeline (from tests/processRequest)
 

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="160" viewBox="0 0 600 160">
+  <style>
+    .track { stroke: #333; stroke-width: 4; fill: none; }
+    .label { font: 12px sans-serif; fill: #222; }
+    .box { fill: #eef; stroke: #66f; stroke-width: 1.5; }
+    .errbox { fill: #fee; stroke: #f66; stroke-width: 1.5; }
+    .arrow { fill: #333; }
+  </style>
+
+  <!-- Success track -->
+  <path class="track" d="M20 40 H520" />
+  <rect class="box" x="80" y="20" width="80" height="40" rx="6" />
+  <text class="label" x="120" y="45" text-anchor="middle">Step A</text>
+  <rect class="box" x="220" y="20" width="80" height="40" rx="6" />
+  <text class="label" x="260" y="45" text-anchor="middle">Step B</text>
+  <rect class="box" x="360" y="20" width="80" height="40" rx="6" />
+  <text class="label" x="400" y="45" text-anchor="middle">Success</text>
+
+  <!-- Error branch -->
+  <path class="track" d="M260 60 Q300 90 340 100" />
+  <rect class="errbox" x="360" y="90" width="100" height="40" rx="6" />
+  <text class="label" x="410" y="115" text-anchor="middle">Error Handler</text>
+  <path class="track" d="M460 110 H540" />
+  <rect class="errbox" x="540" y="90" width="48" height="40" rx="6" />
+  <text class="label" x="564" y="115" text-anchor="middle">Fail</text>
+
+  <!-- Labels -->
+  <text class="label" x="20" y="20">Input</text>
+  <text class="label" x="520" y="20" text-anchor="end">Main success track</text>
+
+</svg>

@@ -2,10 +2,11 @@ package lite
 
 import (
 	"context"
+	"sync"
+
 	"github.com/ib-77/rop3/pkg/rop"
 	"github.com/ib-77/rop3/pkg/rop/core"
 	"github.com/ib-77/rop3/pkg/rop/mass"
-	"sync"
 )
 
 func Run[T any](ctx context.Context, inputCh <-chan rop.Result[T],
@@ -15,7 +16,7 @@ func Run[T any](ctx context.Context, inputCh <-chan rop.Result[T],
 	out := make(chan rop.Result[T])
 	wg := &sync.WaitGroup{}
 
-	for range lines {
+	for i := 0; i < lines; i++ {
 		wg.Add(1)
 		go core.Locomotive(ctx, inputCh, out, engine, core.CancellationHandlers[T, T]{}, nil, wg)
 	}
@@ -35,7 +36,7 @@ func Turnout[In, Out any](ctx context.Context, inputCh <-chan rop.Result[In],
 	out := make(chan rop.Result[Out])
 	wg := &sync.WaitGroup{}
 
-	for range lines {
+	for i := 0; i < lines; i++ {
 		wg.Add(1)
 		go core.Locomotive(ctx, inputCh, out, engine, core.CancellationHandlers[In, Out]{}, nil, wg)
 	}
