@@ -38,8 +38,10 @@ func AndValidate[T any](ctx context.Context, input rop.Result[T],
 	return input
 }
 
-func ValidateMany[T any](input T, validateF func(in T) (valid bool, errMsg string)) rop.Result[T] {
-	if valid, errMsg := validateF(input); valid {
+func ValidateMany[T any](ctx context.Context, input T,
+	validateF func(ctx context.Context, in T) (valid bool, errMsg string)) rop.Result[T] {
+
+	if valid, errMsg := validateF(ctx, input); valid {
 		return rop.Success(input)
 	} else {
 		return rop.Fail[T](errors.New(errMsg))
