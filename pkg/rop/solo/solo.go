@@ -3,6 +3,7 @@ package solo
 import (
 	"context"
 	"errors"
+
 	"github.com/ib-77/rop3/pkg/rop"
 )
 
@@ -35,6 +36,14 @@ func AndValidate[T any](ctx context.Context, input rop.Result[T],
 		}
 	}
 	return input
+}
+
+func ValidateMany[T any](input T, validateF func(in T) (valid bool, errMsg string)) rop.Result[T] {
+	if valid, errMsg := validateF(input); valid {
+		return rop.Success(input)
+	} else {
+		return rop.Fail[T](errors.New(errMsg))
+	}
 }
 
 func Switch[In any, Out any](ctx context.Context,
