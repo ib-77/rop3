@@ -149,6 +149,19 @@ func Try[In any, Out any](ctx context.Context, input rop.Result[In],
 	}
 }
 
+func FailOnError[T any](ctx context.Context, input rop.Result[T],
+	maybeErr func(ctx context.Context, in T) error) rop.Result[T] {
+	if input.IsSuccess() {
+		err := maybeErr(ctx, input.Result())
+		if err != nil {
+			return rop.Fail[T](err)
+		} else {
+			return input
+		}
+	}
+	return input
+}
+
 func Finally[In, Out any](ctx context.Context, input rop.Result[In],
 	onSuccess func(ctx context.Context, r In) Out,
 	onError func(ctx context.Context, err error) Out,
