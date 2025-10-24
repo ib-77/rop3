@@ -108,3 +108,7 @@ func (r Result[T]) IsEmpty() bool {
 func (r Result[T]) Id() uuid.UUID {
 	return r.id
 }
+
+func (r Result[T]) IsFailure() bool {
+	return !r.IsSuccess()
+}
