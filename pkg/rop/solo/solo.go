@@ -89,6 +89,20 @@ func Tee[T any](ctx context.Context,
 	return input
 }
 
+func TeeIf[T any](ctx context.Context,
+	input rop.Result[T],
+	onCondition func(ctx context.Context, r rop.Result[T]) bool,
+	onSuccessAndCondition func(ctx context.Context, r rop.Result[T])) rop.Result[T] {
+
+	if input.IsSuccess() {
+		if onCondition(ctx, input) {
+			onSuccessAndCondition(ctx, input)
+		}
+	}
+
+	return input
+}
+
 func DoubleTee[T any](ctx context.Context, input rop.Result[T],
 	onSuccess func(ctx context.Context, r T),
 	onError func(ctx context.Context, err error),
