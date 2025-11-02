@@ -21,8 +21,22 @@ import (
     "github.com/ib-77/rop3/pkg/rop/mass"
     "github.com/ib-77/rop3/pkg/rop/lite"
     "github.com/ib-77/rop3/pkg/rop/core"
+    "github.com/ib-77/rop3/pkg/rop/chain"
+    "github.com/ib-77/rop3/pkg/rop/tiny"
+    "github.com/ib-77/rop3/pkg/rop/custom"
 )
 ```
+
+## Packages
+
+- `rop`: core `Result[T]`, constructors, and helpers
+- `solo`: synchronous single-value helpers for ROP
+- `chain`: context-aware fluent chaining over `Result[T]`
+- `tiny`: minimal synchronous fluent chaining with context
+- `lite`: ergonomic channel-lifted helpers and worker utilities
+- `mass`: lower-level channel primitives for concurrent pipelines
+- `custom`: cancellation-aware wrappers and helpers
+- `core`: channel I/O and worker orchestration utilities
 
 ---
 
@@ -159,6 +173,55 @@ out := core.FromChanMany(context.Background(),
 ```
 
 
+
+## Synchronous chains
+
+Use fluent chains when you don't need channels.
+
+- Chain (context-aware):
+
+```go
+ctx := context.Background()
+out := chain.Start[int](ctx).
+    Then(func(ctx context.Context, n int) (int, error) { return n * 2, nil }).
+    ThenTry(func(ctx context.Context, n int) (int, error) {
+        if n > 10 { return 0, fmt.Errorf("too big") }
+        return n, nil
+    }).
+    Map(func(ctx context.Context, n int) string { return fmt.Sprintf("n=%d", n) }).
+    Ensure(func(ctx context.Context, r rop.Result[string]) rop.Result[string] { return r }).
+    Finally(func(ctx context.Context, r rop.Result[string]) string {
+        if r.IsSuccess() { return r.Result() }
+        return "invalid"
+    }).
+    Result(rop.Success(5)) // final string
+
+// Alternatively, start with a value:
+out2 := chain.FromValue(ctx, 7).
+    Then(func(ctx context.Context, n int) (int, error) { return n + 1, nil }).
+    Finally(func(ctx context.Context, r rop.Result[int]) int { return r.UnwrapOr(0) }).
+    Result(rop.Success(7))
+```
+
+- Tiny (no context):
+
+```go
+out := tiny.Start[int]().
+    Then(func(n int) int { return n * 2 }).
+    ThenTry(func(n int) (int, error) {
+        if n%2 == 0 { return n, nil }
+        return 0, fmt.Errorf("odd not allowed")
+    }).
+    Map(func(n int) string { return fmt.Sprintf("n=%d", n) }).
+    Ensure(func(r rop.Result[string]) rop.Result[string] { return r }).
+    Finally(func(r rop.Result[string]) string {
+        if r.IsSuccess() { return r.Result() }
+        return "invalid"
+    }).
+    Result(rop.Success(4))
+```
+
+Note: `Then` short-circuits on failures, `ThenTry` converts errors to `Fail`, `Ensure` enforces invariants, and `Finally` reduces to a final value.
 
 ## Example: URL processing pipeline
 
