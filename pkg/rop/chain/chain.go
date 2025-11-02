@@ -35,7 +35,8 @@ func (c *Chain[T]) Result() rop.Result[T] {
 }
 
 // Then chains a function that returns rop.Result[U]
-func Then[T, U any](c *Chain[T], onSuccess func(context.Context, T) rop.Result[U]) *Chain[U] {
+func Then[T, U any](c *Chain[T],
+	onSuccess func(context.Context, T) rop.Result[U]) *Chain[U] {
 	return &Chain[U]{
 		ctx:    c.ctx,
 		result: solo.Switch[T, U](c.ctx, c.result, onSuccess),
@@ -43,7 +44,8 @@ func Then[T, U any](c *Chain[T], onSuccess func(context.Context, T) rop.Result[U
 }
 
 // ThenTry chains a function that returns (U, error)
-func ThenTry[T, U any](c *Chain[T], tryOnSuccess func(context.Context, T) (U, error)) *Chain[U] {
+func ThenTry[T, U any](c *Chain[T],
+	tryOnSuccess func(context.Context, T) (U, error)) *Chain[U] {
 	return &Chain[U]{
 		ctx:    c.ctx,
 		result: solo.Try[T, U](c.ctx, c.result, tryOnSuccess),
@@ -51,7 +53,8 @@ func ThenTry[T, U any](c *Chain[T], tryOnSuccess func(context.Context, T) (U, er
 }
 
 // Map chains a pure transformation function
-func Map[T, U any](c *Chain[T], onSuccess func(context.Context, T) U) *Chain[U] {
+func Map[T, U any](c *Chain[T],
+	onSuccess func(context.Context, T) U) *Chain[U] {
 	return &Chain[U]{
 		ctx:    c.ctx,
 		result: solo.Map[T, U](c.ctx, c.result, onSuccess),
@@ -72,6 +75,9 @@ func (c *Chain[T]) Ensure(onSuccess func(context.Context, T)) *Chain[T] {
 }
 
 // Finally collapses the chain into a final result using solo.Finally
-func Finally[T, U any](c *Chain[T], onSuccess func(context.Context, T) U, onFailure func(context.Context, error) U, onCancel func(context.Context, error) U) U {
+func Finally[T, U any](c *Chain[T],
+	onSuccess func(context.Context, T) U,
+	onFailure func(context.Context, error) U,
+	onCancel func(context.Context, error) U) U {
 	return solo.Finally[T, U](c.ctx, c.result, onSuccess, onFailure, onCancel)
 }
