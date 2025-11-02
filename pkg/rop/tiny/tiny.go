@@ -52,14 +52,6 @@ func (c Chain[T]) Map(onSuccess func(ctx context.Context, t T) T) Chain[T] {
 	return Chain[T]{ctx: c.ctx, res: rop.Success(onSuccess(c.ctx, c.res.Result()))}
 }
 
-// To switch the successful value to a new result
-func (c Chain[T]) To(onSuccess func(ctx context.Context, t T) rop.Result[T]) Chain[T] {
-	if c.res.IsFailure() {
-		return Chain[T]{ctx: c.ctx, res: rop.Fail[T](c.res.Err())}
-	}
-	return Chain[T]{ctx: c.ctx, res: onSuccess(c.ctx, c.res.Result())}
-}
-
 // Ensure triggers side effects for success/failure without changing the result
 func (c Chain[T]) Ensure(onSuccess func(context.Context, T), onFailure func(context.Context, error)) Chain[T] {
 	if c.res.IsFailure() {
