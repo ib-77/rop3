@@ -15,11 +15,11 @@ type Chain[T, U any] struct {
 }
 
 // Start creates a new chain from a rop.Result
-func Start[T any](ctx context.Context, result rop.Result[T]) *Chain[T, T] {
-	return &Chain[T, T]{
-		ctx:    ctx,
-		input:  result,
-		result: result,
+func Start[T, U any](ctx context.Context, result rop.Result[T]) *Chain[T, U] {
+	return &Chain[T, U]{
+		ctx:   ctx,
+		input: result,
+		//result: result,
 	}
 }
 

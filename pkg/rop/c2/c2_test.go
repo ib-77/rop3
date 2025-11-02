@@ -10,7 +10,7 @@ import (
 
 func TestStart_Then_Success(t *testing.T) {
 	ctx := context.Background()
-	ch := Start[int](ctx, rop.Success(5)).
+	ch := Start[int, int](ctx, rop.Success(5)).
 		Then(func(ctx context.Context, n int) rop.Result[int] { return rop.Success(n * 2) })
 
 	res := ch.Result()
@@ -29,7 +29,7 @@ func TestStart_Then_Success(t *testing.T) {
 func TestStart_Then_Failure(t *testing.T) {
 	ctx := context.Background()
 	expectedErr := errors.New("boom")
-	ch := Start[int](ctx, rop.Success(5)).
+	ch := Start[int, int](ctx, rop.Success(5)).
 		Then(func(ctx context.Context, n int) rop.Result[int] { return rop.Fail[int](expectedErr) })
 
 	res := ch.Result()
@@ -44,7 +44,7 @@ func TestStart_Then_Failure(t *testing.T) {
 func TestThenTry_SuccessAndError(t *testing.T) {
 	ctx := context.Background()
 	// Success path
-	ch1 := Start[int](ctx, rop.Success(3)).
+	ch1 := Start[int, int](ctx, rop.Success(3)).
 		ThenTry(func(ctx context.Context, n int) (int, error) { return n + 7, nil })
 	res1 := ch1.Result()
 	if !res1.IsSuccess() || res1.Result() != 10 {
@@ -53,7 +53,7 @@ func TestThenTry_SuccessAndError(t *testing.T) {
 
 	// Error path
 	expectedErr := errors.New("bad input")
-	ch2 := Start[int](ctx, rop.Success(3)).
+	ch2 := Start[int, int](ctx, rop.Success(3)).
 		ThenTry(func(ctx context.Context, n int) (int, error) { return 0, expectedErr })
 	res2 := ch2.Result()
 	if res2.IsSuccess() || res2.Err() == nil || res2.Err().Error() != expectedErr.Error() {
@@ -64,7 +64,7 @@ func TestThenTry_SuccessAndError(t *testing.T) {
 func TestMap_PassesFailureThrough(t *testing.T) {
 	ctx := context.Background()
 	expectedErr := errors.New("fail")
-	ch := Start[int](ctx, rop.Fail[int](expectedErr)).
+	ch := Start[int, int](ctx, rop.Fail[int](expectedErr)).
 		Map(func(ctx context.Context, n int) int { return n * 100 })
 
 	res := ch.Result()
@@ -81,7 +81,7 @@ func TestEnsure_SideEffectOnlyOnSuccess(t *testing.T) {
 	called := 0
 
 	// Success triggers side effect
-	ch1 := Start[int](ctx, rop.Success(2)).
+	ch1 := Start[int, int](ctx, rop.Success(2)).
 		Ensure(func(ctx context.Context, n int) { called++ })
 	if !ch1.Result().IsSuccess() {
 		t.Fatalf("expected success, got: %v", ch1.Result().Err())
@@ -91,7 +91,7 @@ func TestEnsure_SideEffectOnlyOnSuccess(t *testing.T) {
 	}
 
 	// Failure does not trigger side effect
-	ch2 := Start[int](ctx, rop.Fail[int](errors.New("x"))).
+	ch2 := Start[int, int](ctx, rop.Fail[int](errors.New("x"))).
 		Ensure(func(ctx context.Context, n int) { called++ })
 	if ch2.Result().IsSuccess() {
 		t.Fatalf("expected failure, got success")
@@ -104,7 +104,7 @@ func TestEnsure_SideEffectOnlyOnSuccess(t *testing.T) {
 func TestFinally_UsesInputNotTransformedResult(t *testing.T) {
 	ctx := context.Background()
 	// Transform to a failure but Finally reduces based on input
-	ch := Start[int](ctx, rop.Success(3)).
+	ch := Start[int, int](ctx, rop.Success(3)).
 		ThenTry(func(ctx context.Context, n int) (int, error) { return 0, errors.New("ignored failure") })
 
 	// Even though the chain's result is a failure, Finally consults the original input.
