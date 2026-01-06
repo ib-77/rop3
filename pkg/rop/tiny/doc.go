@@ -5,7 +5,7 @@
 // - Start/FromValue: create a Chain
 // - Then/ThenTry: compose result-returning or error-returning functions
 // - Map/To: transform or switch value to a new Result
-// - Ensure: trigger side-effects on success only
+// - Ensure: trigger side effects on success only
 // - Finally: reduce to a concrete value via handlers
 //
 // Tiny is ideal for small services or tests where lightweight synchronous
