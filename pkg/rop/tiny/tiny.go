@@ -41,7 +41,7 @@ func (c Chain[T]) RepeatUntil(onSuccess func(ctx context.Context, t T) rop.Resul
 	}
 
 	for {
-		c.Then(onSuccess)
+		c = c.Then(onSuccess)
 
 		if c.res.IsFailure() || c.res.IsProcessed() || !until(c.ctx, c.res.Result()) {
 			return c
@@ -53,9 +53,8 @@ func (c Chain[T]) While(onSuccess func(ctx context.Context, t T) rop.Result[T],
 	while func(ctx context.Context, t T) bool) Chain[T] {
 
 	for !c.res.IsFailure() && !c.res.IsProcessed() && while(c.ctx, c.res.Result()) {
-		c.Then(onSuccess)
+		c = c.Then(onSuccess)
 	}
-
 	return c
 }
 
