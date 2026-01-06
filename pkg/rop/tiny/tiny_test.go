@@ -325,6 +325,108 @@ func TestWhile_NoExecutionWhenConditionFalse(t *testing.T) {
 	}
 }
 
+func TestWhileChain_OuterStateAndInnerIterations(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	type state struct {
+		outer int
+		inner int
+	}
+
+	outerStart := state{outer: 0, inner: 0}
+
+	innerCalls := 0
+	chain := FromValue(ctx, outerStart).
+		WhileChain(
+			func(ctx context.Context, s state) Chain[state] {
+				innerCalls++
+
+				current := FromValue(ctx, s).
+					Then(func(ctx context.Context, in state) rop.Result[state] {
+						in.inner++
+						return rop.Success(in)
+					}).
+					Then(func(ctx context.Context, in state) rop.Result[state] {
+						in.outer++
+						return rop.Success(in)
+					})
+
+				return current
+			},
+			func(ctx context.Context, s state) bool {
+				return s.outer < 3
+			},
+		)
+
+	out := chain.Result()
+	if !out.IsSuccess() {
+		t.Fatalf("expected success, got: success=%v, err=%v", out.IsSuccess(), out.Err())
+	}
+
+	res := out.Result()
+	if res.outer != 3 {
+		t.Fatalf("expected outer to be 3, got %d", res.outer)
+	}
+	if innerCalls != 3 {
+		t.Fatalf("expected inner chain to run 3 times, got %d", innerCalls)
+	}
+	if res.inner != 3 {
+		t.Fatalf("expected inner to be 3, got %d", res.inner)
+	}
+}
+
+func TestRepeatChainUntil_OuterStateAndInnerIterations(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	type state struct {
+		outer int
+		inner int
+	}
+
+	outerStart := state{outer: 0, inner: 0}
+
+	innerCalls := 0
+	chain := FromValue(ctx, outerStart).
+		RepeatChainUntil(
+			func(ctx context.Context, s state) Chain[state] {
+				innerCalls++
+
+				current := FromValue(ctx, s).
+					Then(func(ctx context.Context, in state) rop.Result[state] {
+						in.inner++
+						return rop.Success(in)
+					}).
+					Then(func(ctx context.Context, in state) rop.Result[state] {
+						in.outer++
+						return rop.Success(in)
+					})
+
+				return current
+			},
+			func(ctx context.Context, s state) bool {
+				return s.outer < 3
+			},
+		)
+
+	out := chain.Result()
+	if !out.IsSuccess() {
+		t.Fatalf("expected success, got: success=%v, err=%v", out.IsSuccess(), out.Err())
+	}
+
+	res := out.Result()
+	if res.outer != 3 {
+		t.Fatalf("expected outer to be 3, got %d", res.outer)
+	}
+	if innerCalls != 3 {
+		t.Fatalf("expected inner chain to run 3 times, got %d", innerCalls)
+	}
+	if res.inner != 3 {
+		t.Fatalf("expected inner to be 3, got %d", res.inner)
+	}
+}
+
 func TestThen_ShortCircuitOnProcessed(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
