@@ -7,13 +7,14 @@ import (
 )
 
 type Result[T any] struct {
-	id        uuid.UUID
-	createdAt time.Time
-	result    T
-	err       error
-	isSuccess bool
-	isCancel  bool
-	hasResult bool
+	id          uuid.UUID
+	createdAt   time.Time
+	result      T
+	err         error
+	isSuccess   bool
+	isCancel    bool
+	hasResult   bool
+	isProcessed bool // WARNING: tiny package implements ONLY this
 }
 
 func Success[T any](r T) Result[T] {
@@ -50,18 +51,6 @@ func Cancel[T any](err error) Result[T] {
 	}
 }
 
-//func CancelWithResult[T any](err error, res T) Result[T] {
-//	return Result[T]{
-//		err:       err,
-//		isSuccess: false,
-//		isCancel:  true,
-//		createdAt: time.Now().UTC(),
-//		result:    res,
-//		hasResult: true,
-//		id:        uuid.New(),
-//	}
-//}
-
 func CancelFrom[In, Out any](from Result[In]) Result[Out] {
 	return Result[Out]{
 		err:       from.err,
@@ -71,6 +60,34 @@ func CancelFrom[In, Out any](from Result[In]) Result[Out] {
 		hasResult: from.hasResult,
 		id:        from.id,
 	}
+}
+
+// SetProcessed mark result as processed (pipeline should not do anything on this result)
+// This applies to successful results (in case of failure, processing stops as intended by the design).
+// WARNING: tiny package implements ONLY this
+func SetProcessed[T any](r Result[T]) Result[T] {
+	return Result[T]{
+		isProcessed: true,
+		result:      r.result,
+		err:         r.err,
+		isSuccess:   r.isSuccess,
+		isCancel:    r.isCancel,
+		createdAt:   r.createdAt,
+		hasResult:   r.hasResult,
+		id:          r.id,
+	}
+}
+
+func SuccessAndProcessed[T any](r T) Result[T] {
+	return SetProcessed(Success(r))
+}
+
+func FailAndProcessed[T any](er error) Result[T] {
+	return SetProcessed(Fail[T](er))
+}
+
+func CancelAndProcessed[T any](er error) Result[T] {
+	return SetProcessed(Cancel[T](er))
 }
 
 func (r Result[T]) Result() T {
@@ -111,4 +128,8 @@ func (r Result[T]) Id() uuid.UUID {
 
 func (r Result[T]) IsFailure() bool {
 	return !r.IsSuccess()
+}
+
+func (r Result[T]) IsProcessed() bool {
+	return r.isProcessed
 }

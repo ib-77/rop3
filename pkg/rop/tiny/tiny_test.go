@@ -3,6 +3,7 @@ package tiny
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/ib-77/rop3/pkg/rop"
@@ -159,33 +160,96 @@ func TestEnsure_SideEffects(t *testing.T) {
 	// success path
 	sCalled := false
 	fCalled := false
+	pCalled := false
 	out1 := FromValue(ctx, 11).
-		Ensure(func(ctx context.Context, v int) { sCalled = true }, func(ctx context.Context, err error) { fCalled = true }).
+		Ensure(func(ctx context.Context, v int) { sCalled = true },
+			func(ctx context.Context, err error) { fCalled = true },
+			func(ctx context.Context, v int) { pCalled = true }).
 		Result()
 	if !out1.IsSuccess() || out1.Result() != 11 {
 		t.Fatalf("expected success with 11, got: %v, %v", out1.IsSuccess(), out1.Err())
 	}
-	if !sCalled || fCalled {
-		t.Fatalf("expected success side-effect only; sCalled=%v, fCalled=%v", sCalled, fCalled)
+
+	if !sCalled || fCalled || pCalled {
+		t.Fatalf("expected success side-effect only; sCalled=%v, fCalled=%v, pCalled=%v",
+			sCalled, fCalled, pCalled)
 	}
 
 	// failure path (including cancel treated as failure in Ensure)
 	sCalled = false
 	fCalled = false
+	pCalled = false
 	out2 := Start(ctx, rop.Fail[int](errors.New("bad"))).
-		Ensure(func(ctx context.Context, v int) { sCalled = true }, func(ctx context.Context, err error) { fCalled = true }).
+		Ensure(func(ctx context.Context, v int) { sCalled = true },
+			func(ctx context.Context, err error) { fCalled = true },
+			func(ctx context.Context, p int) { pCalled = true }).
 		Result()
 	if out2.IsSuccess() || out2.Err() == nil || out2.Err().Error() != "bad" {
 		t.Fatalf("expected failure 'bad', got: success=%v, err=%v", out2.IsSuccess(), out2.Err())
 	}
-	if sCalled || !fCalled {
-		t.Fatalf("expected failure side-effect only; sCalled=%v, fCalled=%v", sCalled, fCalled)
+
+	if sCalled || !fCalled || pCalled {
+		t.Fatalf("expected failure side-effect only; sCalled=%v, fCalled=%v, pCalled=%v", sCalled, fCalled, pCalled)
+	}
+
+	// success path processed*
+	sCalled = false
+	fCalled = false
+	pCalled = false
+	out3 := Start(ctx, rop.SetProcessed(rop.Success(11))).
+		Ensure(func(ctx context.Context, v int) { sCalled = true },
+			func(ctx context.Context, err error) { fCalled = true },
+			func(ctx context.Context, v int) { pCalled = true }).
+		Result()
+
+	if !out3.IsSuccess() || out3.Result() != 11 {
+		t.Fatalf("expected success with 11, got: %v, %v", out3.IsSuccess(), out3.Err())
+	}
+
+	if sCalled || fCalled || !pCalled {
+		t.Fatalf("expected success side-effect only; sCalled=%v, fCalled=%v, pCalled=%v",
+			sCalled, fCalled, pCalled)
+	}
+
+	// failure path processed* (including cancel treated as failure in Ensure)
+	sCalled = false
+	fCalled = false
+	pCalled = false
+	out4 := Start(ctx, rop.SetProcessed(rop.Fail[int](errors.New("bad")))).
+		Ensure(func(ctx context.Context, v int) { sCalled = true },
+			func(ctx context.Context, err error) { fCalled = true },
+			func(ctx context.Context, p int) { pCalled = true }).
+		Result()
+
+	if out4.IsSuccess() || out4.Err() == nil || out4.Err().Error() != "bad" {
+		t.Fatalf("expected failure 'bad', got: success=%v, err=%v", out4.IsSuccess(), out4.Err())
+	}
+
+	if sCalled || !fCalled || pCalled {
+		t.Fatalf("expected failure side-effect only; sCalled=%v, fCalled=%v, pCalled=%v",
+			sCalled, fCalled, pCalled)
 	}
 
 	// nil callbacks should be safe
-	out3 := FromValue(ctx, 1).Ensure(nil, nil).Result()
-	if !out3.IsSuccess() || out3.Result() != 1 {
-		t.Fatalf("expected unchanged success result, got: %v, %v", out3.IsSuccess(), out3.Err())
+	out5 := FromValue(ctx, 1).Ensure(nil, nil, nil).Result()
+	if !out5.IsSuccess() || out5.Result() != 1 {
+		t.Fatalf("expected unchanged success result, got: %v, %v", out5.IsSuccess(), out5.Err())
+	}
+
+	// unchanged success processed
+	out6 := Start(ctx, rop.SetProcessed(rop.Success(1))).
+		Ensure(nil, nil, nil).Result()
+	if !out6.IsSuccess() || out6.Result() != 1 || !out6.IsProcessed() {
+		t.Fatalf("expected unchanged processed success result, got: %v, %v, %v",
+			out6.IsSuccess(), out6.Err(), out6.IsProcessed())
+	}
+
+	// unchanged fail processed
+	out7 := Start(ctx, rop.SetProcessed(rop.Fail[int](fmt.Errorf("bad processed")))).
+		Ensure(nil, nil, nil).Result()
+	if out7.IsSuccess() || !out7.IsFailure() || out7.Err() == nil || !out7.IsProcessed() {
+		t.Fatalf("expected unchanged processed fail result, got: %v, %v, %v",
+			out7.IsSuccess(), out7.Err(), out7.IsProcessed())
 	}
 }
 
