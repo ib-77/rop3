@@ -128,6 +128,243 @@ func TestMap_Success(t *testing.T) {
 	}
 }
 
+func TestRepeatUntil_ShortCircuitOnFailure(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	err := errors.New("repeat-fail")
+	chain := Start(ctx, rop.Fail[int](err))
+
+	called := false
+	chain = chain.RepeatUntil(
+		func(ctx context.Context, t int) rop.Result[int] {
+			called = true
+			return rop.Success(t + 1)
+		},
+		func(ctx context.Context, t int) bool { return true },
+	)
+
+	out := chain.Result()
+	if out.IsSuccess() || out.Err() == nil || out.Err().Error() != "repeat-fail" {
+		t.Fatalf("expected failure 'repeat-fail', got: success=%v, err=%v", out.IsSuccess(), out.Err())
+	}
+	if called {
+		t.Fatalf("onSuccess must not be called when starting RepeatUntil with failure")
+	}
+}
+
+func TestRepeatUntil_ShortCircuitOnProcessed(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	base := rop.SetProcessed(rop.Success(1))
+	chain := Start(ctx, base)
+
+	called := false
+	chain = chain.RepeatUntil(
+		func(ctx context.Context, t int) rop.Result[int] {
+			called = true
+			return rop.Success(t + 1)
+		},
+		func(ctx context.Context, t int) bool { return true },
+	)
+
+	out := chain.Result()
+	if !out.IsSuccess() || out.Result() != 1 || !out.IsProcessed() {
+		t.Fatalf("expected unchanged processed success, got: success=%v, val=%v, processed=%v",
+			out.IsSuccess(), out.Result(), out.IsProcessed())
+	}
+	if called {
+		t.Fatalf("onSuccess must not be called when starting RepeatUntil with processed result")
+	}
+}
+
+func TestRepeatUntil_ExecutesOnceWhenUntilFalse(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	chain := FromValue(ctx, 1)
+
+	calls := 0
+	chain = chain.RepeatUntil(
+		func(ctx context.Context, t int) rop.Result[int] {
+			calls++
+			return rop.Success(t + 1)
+		},
+		func(ctx context.Context, t int) bool { return false },
+	)
+
+	out := chain.Result()
+	if !out.IsSuccess() {
+		t.Fatalf("expected success result, got: success=%v, err=%v", out.IsSuccess(), out.Err())
+	}
+	if calls != 1 {
+		t.Fatalf("expected RepeatUntil body to execute once, got %d calls", calls)
+	}
+}
+
+func TestRepeatUntil_ExecutesTenTimes(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	chain := FromValue(ctx, 1)
+
+	calls := 0
+	chain = chain.RepeatUntil(
+		func(ctx context.Context, v int) rop.Result[int] {
+			calls++
+			if calls > 20 {
+				t.Fatalf("infinity loop")
+			}
+			return rop.Success(v + 1)
+		},
+		func(ctx context.Context, v int) bool { return v <= 10 },
+	)
+
+	out := chain.Result()
+	if !out.IsSuccess() {
+		t.Fatalf("expected success result, got: success=%v, err=%v", out.IsSuccess(), out.Err())
+	}
+	if calls != 10 {
+		t.Fatalf("expected RepeatUntil body to execute once, got %d calls", calls)
+	}
+}
+
+func TestWhile_ExecutesTenTimes(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	chain := FromValue(ctx, 1)
+
+	calls := 0
+	chain = chain.While(
+		func(ctx context.Context, v int) rop.Result[int] {
+			calls++
+			if calls > 20 {
+				t.Fatalf("infinity loop")
+			}
+			return rop.Success(v + 1)
+		},
+		func(ctx context.Context, v int) bool { return v <= 10 },
+	)
+
+	out := chain.Result()
+	if !out.IsSuccess() {
+		t.Fatalf("expected success result, got: success=%v, err=%v", out.IsSuccess(), out.Err())
+	}
+	if calls != 10 {
+		t.Fatalf("expected RepeatUntil body to execute once, got %d calls", calls)
+	}
+}
+
+func TestWhile_ShortCircuitOnFailure(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	err := errors.New("while-fail")
+	chain := Start(ctx, rop.Fail[int](err))
+
+	called := false
+	chain = chain.While(
+		func(ctx context.Context, t int) rop.Result[int] {
+			called = true
+			return rop.Success(t + 1)
+		},
+		func(ctx context.Context, t int) bool { return true },
+	)
+
+	out := chain.Result()
+	if out.IsSuccess() || out.Err() == nil || out.Err().Error() != "while-fail" {
+		t.Fatalf("expected failure 'while-fail', got: success=%v, err=%v", out.IsSuccess(), out.Err())
+	}
+	if called {
+		t.Fatalf("onSuccess must not be called when starting While with failure")
+	}
+}
+
+func TestWhile_ShortCircuitOnProcessed(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	base := rop.SetProcessed(rop.Success(2))
+	chain := Start(ctx, base)
+
+	called := false
+	chain = chain.While(
+		func(ctx context.Context, t int) rop.Result[int] {
+			called = true
+			return rop.Success(t + 1)
+		},
+		func(ctx context.Context, t int) bool { return true },
+	)
+
+	out := chain.Result()
+	if !out.IsSuccess() || out.Result() != 2 || !out.IsProcessed() {
+		t.Fatalf("expected unchanged processed success, got: success=%v, val=%v, processed=%v",
+			out.IsSuccess(), out.Result(), out.IsProcessed())
+	}
+	if called {
+		t.Fatalf("onSuccess must not be called when starting While with processed result")
+	}
+}
+
+func TestWhile_NoExecutionWhenConditionFalse(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	chain := FromValue(ctx, 5)
+
+	calls := 0
+	chain = chain.While(
+		func(ctx context.Context, t int) rop.Result[int] {
+			calls++
+			return rop.Success(t + 1)
+		},
+		func(ctx context.Context, t int) bool { return false },
+	)
+
+	out := chain.Result()
+	if !out.IsSuccess() || out.Result() != 5 {
+		t.Fatalf("expected unchanged success result 5, got: success=%v, val=%v, err=%v",
+			out.IsSuccess(), out.Result(), out.Err())
+	}
+	if calls != 0 {
+		t.Fatalf("expected While body to never execute, got %d calls", calls)
+	}
+}
+
+func TestThen_ShortCircuitOnProcessed(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	base := rop.SetProcessed(rop.Success(10))
+	chain := Start(ctx, base)
+
+	called := false
+	chain = chain.Then(func(ctx context.Context, t int) rop.Result[int] {
+		called = true
+		return rop.Success(t + 1)
+	})
+
+	out := chain.Result()
+	if !out.IsSuccess() || out.Result() != 10 || !out.IsProcessed() {
+		t.Fatalf("expected unchanged processed success, got: success=%v, val=%v, processed=%v",
+			out.IsSuccess(), out.Result(), out.IsProcessed())
+	}
+	if called {
+		t.Fatalf("Then must not invoke onSuccess when result is already processed")
+	}
+}
+
+func TestThenTry_DeadlineExceededIsCancel(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	chain := FromValue(ctx, 4).
+		ThenTry(func(ctx context.Context, t int) (int, error) {
+			return 0, context.DeadlineExceeded
+		})
+
+	out := chain.Result()
+	if !out.IsCancel() {
+		t.Fatalf("expected cancel result for DeadlineExceeded, got: success=%v, cancel=%v, err=%v",
+			out.IsSuccess(), out.IsCancel(), out.Err())
+	}
+	if !errors.Is(out.Err(), context.DeadlineExceeded) {
+		t.Fatalf("expected DeadlineExceeded error, got: %v", out.Err())
+	}
+}
+
 func TestTo_ShortCircuitOnFailure(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

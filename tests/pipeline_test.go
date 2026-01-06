@@ -3,17 +3,18 @@ package tests
 import (
 	"context"
 	"fmt"
+	"strings"
+	"testing"
+
 	"github.com/ib-77/rop3/pkg/rop"
 	"github.com/ib-77/rop3/pkg/rop/core"
 	"github.com/ib-77/rop3/pkg/rop/lite"
 	"github.com/ib-77/rop3/pkg/rop/mass"
-	"strings"
-	"testing"
-
 	"github.com/stretchr/testify/assert"
 )
 
 // TestURLProcessingDirectly tests the URL processing logic directly without HTTP requests
+
 func TestURLProcessingDirectly(t *testing.T) {
 	// Prepare test URLs - using a smaller set for testing
 	urls := []string{
@@ -50,7 +51,7 @@ func TestURLProcessingDirectly(t *testing.T) {
 		}
 	}
 
-	fmt.Printf("\nSummary: %d valid results, %d invalid results\n", validCount, invalidCount)
+	//fmt.Printf("\nSummary: %d valid results, %d wrong results\n", validCount, invalidCount)
 
 	// Verify we have results for all URLs
 	assert.Equal(t, len(urls), len(results))

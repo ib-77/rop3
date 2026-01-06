@@ -2,6 +2,7 @@ package tiny
 
 import (
 	"context"
+	"errors"
 
 	"github.com/ib-77/rop3/pkg/rop"
 	"github.com/ib-77/rop3/pkg/rop/solo"
@@ -26,32 +27,48 @@ func (c Chain[T]) Result() rop.Result[T] {
 
 // Then composes functions that already return rop.Result[T]
 func (c Chain[T]) Then(onSuccess func(ctx context.Context, t T) rop.Result[T]) Chain[T] {
-	if c.res.IsFailure() {
-		return Chain[T]{ctx: c.ctx, res: rop.Fail[T](c.res.Err())}
+	if c.res.IsFailure() || c.res.IsProcessed() {
+		return c
 	}
-
-	// skip
-	if c.res.IsProcessed() {
-		return Chain[T]{ctx: c.ctx, res: rop.Success[T](c.res.Result())}
-	}
-
 	return Chain[T]{ctx: c.ctx, res: onSuccess(c.ctx, c.res.Result())}
+}
+
+func (c Chain[T]) RepeatUntil(onSuccess func(ctx context.Context, t T) rop.Result[T],
+	until func(ctx context.Context, t T) bool) Chain[T] {
+
+	if c.res.IsFailure() || c.res.IsProcessed() {
+		return c
+	}
+
+	for {
+		c = c.Then(onSuccess)
+
+		if c.res.IsFailure() || c.res.IsProcessed() || !until(c.ctx, c.res.Result()) {
+			return c
+		}
+	}
+}
+
+func (c Chain[T]) While(onSuccess func(ctx context.Context, t T) rop.Result[T],
+	while func(ctx context.Context, t T) bool) Chain[T] {
+
+	for !c.res.IsFailure() && !c.res.IsProcessed() && while(c.ctx, c.res.Result()) {
+		c = c.Then(onSuccess)
+	}
+	return c
 }
 
 // ThenTry composes functions that return (U, error) — like repo calls
 func (c Chain[T]) ThenTry(try func(ctx context.Context, t T) (T, error)) Chain[T] {
-	if c.res.IsFailure() {
-		return Chain[T]{ctx: c.ctx, res: rop.Fail[T](c.res.Err())}
+	if c.res.IsFailure() || c.res.IsProcessed() {
+		return c
 	}
-
-	// skip
-	if c.res.IsProcessed() {
-		return Chain[T]{ctx: c.ctx, res: rop.Success[T](c.res.Result())}
-	}
-
 	// try
 	u, err := try(c.ctx, c.res.Result())
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return Chain[T]{ctx: c.ctx, res: rop.Cancel[T](err)}
+		}
 		return Chain[T]{ctx: c.ctx, res: rop.Fail[T](err)}
 	}
 	return Chain[T]{ctx: c.ctx, res: rop.Success(u)}
@@ -59,13 +76,8 @@ func (c Chain[T]) ThenTry(try func(ctx context.Context, t T) (T, error)) Chain[T
 
 // Map transforms the successful value to a new value
 func (c Chain[T]) Map(onSuccess func(ctx context.Context, t T) T) Chain[T] {
-	if c.res.IsFailure() {
-		return Chain[T]{ctx: c.ctx, res: rop.Fail[T](c.res.Err())}
-	}
-
-	// skip
-	if c.res.IsProcessed() {
-		return Chain[T]{ctx: c.ctx, res: rop.Success[T](c.res.Result())}
+	if c.res.IsFailure() || c.res.IsProcessed() {
+		return c
 	}
 
 	return Chain[T]{ctx: c.ctx, res: rop.Success(onSuccess(c.ctx, c.res.Result()))}
