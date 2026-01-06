@@ -376,6 +376,109 @@ func TestWhileChain_OuterStateAndInnerIterations(t *testing.T) {
 	}
 }
 
+func TestWhileChain_ShortCircuitOnFailure(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	err := errors.New("whilechain-fail")
+	chain := Start(ctx, rop.Fail[int](err)).
+		WhileChain(
+			func(ctx context.Context, v int) Chain[int] {
+				t.Fatalf("inner chain must not be executed on failure start")
+				return FromValue(ctx, v+1)
+			},
+			func(ctx context.Context, v int) bool { return true },
+		)
+
+	out := chain.Result()
+	if out.IsSuccess() || out.Err() == nil || out.Err().Error() != "whilechain-fail" {
+		t.Fatalf("expected failure 'whilechain-fail', got: success=%v, err=%v", out.IsSuccess(), out.Err())
+	}
+}
+
+func TestWhileChain_ShortCircuitOnProcessed(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	base := rop.SetProcessed(rop.Success(1))
+	chain := Start(ctx, base).
+		WhileChain(
+			func(ctx context.Context, v int) Chain[int] {
+				t.Fatalf("inner chain must not be executed on processed start")
+				return FromValue(ctx, v+1)
+			},
+			func(ctx context.Context, v int) bool { return true },
+		)
+
+	out := chain.Result()
+	if !out.IsSuccess() || out.Result() != 1 || !out.IsProcessed() {
+		t.Fatalf("expected unchanged processed success, got: success=%v, val=%v, processed=%v",
+			out.IsSuccess(), out.Result(), out.IsProcessed())
+	}
+}
+
+func TestWhileChain_NoExecutionWhenConditionFalse(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	chain := FromValue(ctx, 5).
+		WhileChain(
+			func(ctx context.Context, v int) Chain[int] {
+				t.Fatalf("inner chain must not be executed when predicate is false")
+				return FromValue(ctx, v+1)
+			},
+			func(ctx context.Context, v int) bool { return false },
+		)
+
+	out := chain.Result()
+	if !out.IsSuccess() || out.Result() != 5 {
+		t.Fatalf("expected unchanged success result 5, got: success=%v, val=%v, err=%v",
+			out.IsSuccess(), out.Result(), out.Err())
+	}
+}
+
+func TestWhileChain_InnerFailureBreaksLoop(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	calls := 0
+	chain := FromValue(ctx, 1).
+		WhileChain(
+			func(ctx context.Context, v int) Chain[int] {
+				calls++
+				return Start(ctx, rop.Fail[int](errors.New("inner-fail")))
+			},
+			func(ctx context.Context, v int) bool { return true },
+		)
+
+	out := chain.Result()
+	if out.IsSuccess() || out.Err() == nil || out.Err().Error() != "inner-fail" {
+		t.Fatalf("expected failure 'inner-fail', got: success=%v, err=%v", out.IsSuccess(), out.Err())
+	}
+	if calls != 1 {
+		t.Fatalf("expected inner chain to execute once before failure, got %d", calls)
+	}
+}
+
+func TestWhileChain_InnerProcessedBreaksLoop(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	calls := 0
+	chain := FromValue(ctx, 1).
+		WhileChain(
+			func(ctx context.Context, v int) Chain[int] {
+				calls++
+				return Start(ctx, rop.SetProcessed(rop.Success(v+1)))
+			},
+			func(ctx context.Context, v int) bool { return true },
+		)
+
+	out := chain.Result()
+	if !out.IsSuccess() || !out.IsProcessed() || out.Result() != 2 {
+		t.Fatalf("expected processed success with value 2, got: success=%v, processed=%v, val=%v, err=%v",
+			out.IsSuccess(), out.IsProcessed(), out.Result(), out.Err())
+	}
+	if calls != 1 {
+		t.Fatalf("expected inner chain to execute once before processed stop, got %d", calls)
+	}
+}
+
 func TestRepeatChainUntil_OuterStateAndInnerIterations(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -424,6 +527,112 @@ func TestRepeatChainUntil_OuterStateAndInnerIterations(t *testing.T) {
 	}
 	if res.inner != 3 {
 		t.Fatalf("expected inner to be 3, got %d", res.inner)
+	}
+}
+
+func TestRepeatChainUntil_ShortCircuitOnFailure(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	err := errors.New("repeatchain-fail")
+	chain := Start(ctx, rop.Fail[int](err)).
+		RepeatChainUntil(
+			func(ctx context.Context, v int) Chain[int] {
+				t.Fatalf("inner chain must not be executed on failure start")
+				return FromValue(ctx, v+1)
+			},
+			func(ctx context.Context, v int) bool { return true },
+		)
+
+	out := chain.Result()
+	if out.IsSuccess() || out.Err() == nil || out.Err().Error() != "repeatchain-fail" {
+		t.Fatalf("expected failure 'repeatchain-fail', got: success=%v, err=%v", out.IsSuccess(), out.Err())
+	}
+}
+
+func TestRepeatChainUntil_ShortCircuitOnProcessed(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	base := rop.SetProcessed(rop.Success(1))
+	chain := Start(ctx, base).
+		RepeatChainUntil(
+			func(ctx context.Context, v int) Chain[int] {
+				t.Fatalf("inner chain must not be executed on processed start")
+				return FromValue(ctx, v+1)
+			},
+			func(ctx context.Context, v int) bool { return true },
+		)
+
+	out := chain.Result()
+	if !out.IsSuccess() || out.Result() != 1 || !out.IsProcessed() {
+		t.Fatalf("expected unchanged processed success, got: success=%v, val=%v, processed=%v",
+			out.IsSuccess(), out.Result(), out.IsProcessed())
+	}
+}
+
+func TestRepeatChainUntil_ExecutesOnceWhenUntilFalse(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	calls := 0
+	chain := FromValue(ctx, 1).
+		RepeatChainUntil(
+			func(ctx context.Context, v int) Chain[int] {
+				calls++
+				return FromValue(ctx, v+1)
+			},
+			func(ctx context.Context, v int) bool { return false },
+		)
+
+	out := chain.Result()
+	if !out.IsSuccess() {
+		t.Fatalf("expected success result, got: success=%v, err=%v", out.IsSuccess(), out.Err())
+	}
+	if calls != 1 {
+		t.Fatalf("expected inner chain to execute once, got %d calls", calls)
+	}
+}
+
+func TestRepeatChainUntil_InnerFailureBreaksLoop(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	calls := 0
+	chain := FromValue(ctx, 1).
+		RepeatChainUntil(
+			func(ctx context.Context, v int) Chain[int] {
+				calls++
+				return Start(ctx, rop.Fail[int](errors.New("inner-fail")))
+			},
+			func(ctx context.Context, v int) bool { return true },
+		)
+
+	out := chain.Result()
+	if out.IsSuccess() || out.Err() == nil || out.Err().Error() != "inner-fail" {
+		t.Fatalf("expected failure 'inner-fail', got: success=%v, err=%v", out.IsSuccess(), out.Err())
+	}
+	if calls != 1 {
+		t.Fatalf("expected inner chain to execute once before failure, got %d", calls)
+	}
+}
+
+func TestRepeatChainUntil_InnerProcessedBreaksLoop(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	calls := 0
+	chain := FromValue(ctx, 1).
+		RepeatChainUntil(
+			func(ctx context.Context, v int) Chain[int] {
+				calls++
+				return Start(ctx, rop.SetProcessed(rop.Success(v+1)))
+			},
+			func(ctx context.Context, v int) bool { return true },
+		)
+
+	out := chain.Result()
+	if !out.IsSuccess() || !out.IsProcessed() || out.Result() != 2 {
+		t.Fatalf("expected processed success with value 2, got: success=%v, processed=%v, val=%v, err=%v",
+			out.IsSuccess(), out.IsProcessed(), out.Result(), out.Err())
+	}
+	if calls != 1 {
+		t.Fatalf("expected inner chain to execute once before processed stop, got %d", calls)
 	}
 }
 

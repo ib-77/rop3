@@ -74,14 +74,6 @@ func (c Chain[T]) While(onSuccess func(ctx context.Context, t T) rop.Result[T],
 	return c
 }
 
-//func (c Chain[T]) WhileChain(chain Chain[T], while func(ctx context.Context, t T) bool) Chain[T] {
-//
-//	for !c.res.IsFailure() && !c.res.IsProcessed() && while(c.ctx, c.res.Result()) {
-//		c = chain
-//	}
-//	return c
-//}
-
 func (c Chain[T]) WhileChain(inC func(ctx context.Context, t T) Chain[T], while func(ctx context.Context, t T) bool) Chain[T] {
 
 	for !c.res.IsFailure() && !c.res.IsProcessed() && while(c.ctx, c.res.Result()) {
