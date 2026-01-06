@@ -14,6 +14,13 @@ type WithError[T any] interface {
 	ResultProvider[T]
 	// Err returns the error if operation failed
 	Err() error
+	// IsFailure returns true if the operation failed
+	IsFailure() bool
+}
+
+// WithError defines an interface for types that can return a result or an error
+type WithSuccess[T any] interface {
+	ResultProvider[T]
 	// IsSuccess returns true if the operation was successful
 	IsSuccess() bool
 }
@@ -21,7 +28,7 @@ type WithError[T any] interface {
 // WithCancel extends WithError with cancellation support
 type WithCancel[T any] interface {
 	WithError[T]
-	// IsCancel returns true if the operation was cancelled
+	// IsCancel returns true if the operation was canceled
 	IsCancel() bool
 }
 
