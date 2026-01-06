@@ -82,6 +82,74 @@ func (c Chain[T]) WhileChain(inC func(ctx context.Context, t T) Chain[T], while 
 	return c
 }
 
+func (c Chain[T]) Or(alternative Chain[T]) Chain[T] {
+	return c.or(alternative)
+}
+
+func (c Chain[T]) or(chains ...Chain[T]) Chain[T] {
+	candidates := make([]Chain[T], 0, len(chains)+1)
+	candidates = append(candidates, c)
+	candidates = append(candidates, chains...)
+
+	hasCancel := false
+	hasFail := false
+	var cancelRes rop.Result[T]
+	var failRes rop.Result[T]
+	var cancelCtx, failCtx context.Context
+
+	for _, ch := range candidates {
+		res := ch.res
+
+		if res.IsSuccess() {
+			return Chain[T]{ctx: ch.ctx, res: res}
+		}
+
+		if res.IsCancel() {
+			if !hasCancel {
+				hasCancel = true
+				cancelRes = res
+				cancelCtx = ch.ctx
+			}
+		} else if res.IsFailure() {
+			if !hasFail {
+				hasFail = true
+				failRes = res
+				failCtx = ch.ctx
+			}
+		}
+	}
+
+	if hasCancel {
+		return Chain[T]{ctx: cancelCtx, res: cancelRes}
+	}
+	if hasFail {
+		return Chain[T]{ctx: failCtx, res: failRes}
+	}
+
+	return c
+}
+
+func (c Chain[T]) And(required Chain[T]) Chain[T] {
+	return c.and(required)
+}
+
+func (c Chain[T]) and(chains ...Chain[T]) Chain[T] {
+	candidates := make([]Chain[T], 0, len(chains)+1)
+	candidates = append(candidates, c)
+	candidates = append(candidates, chains...)
+
+	var res rop.Result[T]
+	for _, ch := range candidates {
+		res = ch.res
+
+		if res.IsFailure() {
+			return Chain[T]{ctx: ch.ctx, res: res}
+		}
+	}
+
+	return Chain[T]{ctx: c.ctx, res: res} // what context to return?
+}
+
 // ThenTry composes functions that return (U, error) — like repo calls
 func (c Chain[T]) ThenTry(try func(ctx context.Context, t T) (T, error)) Chain[T] {
 	if c.res.IsFailure() || c.res.IsProcessed() {

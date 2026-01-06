@@ -530,6 +530,70 @@ func TestRepeatChainUntil_OuterStateAndInnerIterations(t *testing.T) {
 	}
 }
 
+func TestOr_ReturnsFirstSuccess(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	c1 := Start(ctx, rop.Fail[int](errors.New("fail-1")))
+	c2 := FromValue(ctx, 42)
+	c3 := FromValue(ctx, 100)
+
+	out := c1.or(c2, c3).Result()
+	if !out.IsSuccess() || out.Result() != 42 {
+		t.Fatalf("expected success with 42 from first successful chain, got: success=%v, val=%v, err=%v",
+			out.IsSuccess(), out.Result(), out.Err())
+	}
+}
+
+func TestOr_PrefersSuccessOverCancel(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	c1 := Start(ctx, rop.Cancel[int](errors.New("cancel")))
+	c2 := FromValue(ctx, 7)
+
+	out := c1.Or(c2).Result()
+	if !out.IsSuccess() || out.Result() != 7 {
+		t.Fatalf("expected success with 7 to override cancel, got: success=%v, val=%v, err=%v",
+			out.IsSuccess(), out.Result(), out.Err())
+	}
+}
+
+func TestOr_ReturnsCancelWhenNoSuccess(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	c1 := Start(ctx, rop.Fail[int](errors.New("fail-1")))
+	c2 := Start(ctx, rop.Cancel[int](errors.New("cancel")))
+	c3 := Start(ctx, rop.Fail[int](errors.New("fail-2")))
+
+	out := c1.or(c2, c3).Result()
+	if !out.IsCancel() {
+		t.Fatalf("expected cancel result when at least one chain is cancelled and none succeed, got: success=%v, cancel=%v, err=%v",
+			out.IsSuccess(), out.IsCancel(), out.Err())
+	}
+	if out.Err() == nil || out.Err().Error() != "cancel" {
+		t.Fatalf("expected cancel error 'cancel', got: %v", out.Err())
+	}
+}
+
+func TestOr_AllFailuresReturnFailure(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	c1 := Start(ctx, rop.Fail[int](errors.New("fail-1")))
+	c2 := Start(ctx, rop.Fail[int](errors.New("fail-2")))
+
+	out := c1.Or(c2).Result()
+	if out.IsSuccess() || out.IsCancel() {
+		t.Fatalf("expected failure when all chains fail, got success=%v, cancel=%v, err=%v",
+			out.IsSuccess(), out.IsCancel(), out.Err())
+	}
+	if out.Err() == nil {
+		t.Fatalf("expected non-nil error for all-failure Or, got nil")
+	}
+}
+
 func TestRepeatChainUntil_ShortCircuitOnFailure(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
