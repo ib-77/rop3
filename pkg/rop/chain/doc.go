@@ -10,6 +10,6 @@
 // - Then: switch to a new Result[U] via a function
 // - ThenTry: call a function (U, error) and convert error to failure
 // - Map: transform the successful value (T -> U)
-// - Ensure: run side-effects on success without changing the result
+// - Ensure: run side effects on success without changing the result
 // - Finally: collapse the chain into a final value via handlers
 package chain
