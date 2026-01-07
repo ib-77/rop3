@@ -169,17 +169,18 @@ func Try[In any, Out any](ctx context.Context, input rop.Result[In],
 
 		out, err := onTryExecute(ctx, input.Result())
 		if err != nil {
+			if rop.IsCancellationError(err) {
+				return rop.Cancel[Out](err)
+			}
 			return rop.Fail[Out](err)
 		}
-
 		return rop.Success(out)
 	}
 
 	if input.IsCancel() {
 		return rop.Cancel[Out](input.Err())
-	} else {
-		return rop.Fail[Out](input.Err())
 	}
+	return rop.Fail[Out](input.Err())
 }
 
 func FailOnError[T any](ctx context.Context, input rop.Result[T],
@@ -187,10 +188,12 @@ func FailOnError[T any](ctx context.Context, input rop.Result[T],
 	if input.IsSuccess() {
 		err := maybeErr(ctx, input.Result())
 		if err != nil {
+			if rop.IsCancellationError(err) {
+				return rop.Cancel[T](err)
+			}
 			return rop.Fail[T](err)
-		} else {
-			return input
 		}
+		return input
 	}
 	return input
 }

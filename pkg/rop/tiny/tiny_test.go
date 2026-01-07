@@ -325,6 +325,317 @@ func TestWhile_NoExecutionWhenConditionFalse(t *testing.T) {
 	}
 }
 
+func TestWhileChain_OuterStateAndInnerIterations(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	type state struct {
+		outer int
+		inner int
+	}
+
+	outerStart := state{outer: 0, inner: 0}
+
+	innerCalls := 0
+	chain := FromValue(ctx, outerStart).
+		WhileChain(
+			func(ctx context.Context, s state) Chain[state] {
+				innerCalls++
+
+				current := FromValue(ctx, s).
+					Then(func(ctx context.Context, in state) rop.Result[state] {
+						in.inner++
+						return rop.Success(in)
+					}).
+					Then(func(ctx context.Context, in state) rop.Result[state] {
+						in.outer++
+						return rop.Success(in)
+					})
+
+				return current
+			},
+			func(ctx context.Context, s state) bool {
+				return s.outer < 3
+			},
+		)
+
+	out := chain.Result()
+	if !out.IsSuccess() {
+		t.Fatalf("expected success, got: success=%v, err=%v", out.IsSuccess(), out.Err())
+	}
+
+	res := out.Result()
+	if res.outer != 3 {
+		t.Fatalf("expected outer to be 3, got %d", res.outer)
+	}
+	if innerCalls != 3 {
+		t.Fatalf("expected inner chain to run 3 times, got %d", innerCalls)
+	}
+	if res.inner != 3 {
+		t.Fatalf("expected inner to be 3, got %d", res.inner)
+	}
+}
+
+func TestWhileChain_ShortCircuitOnFailure(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	err := errors.New("whilechain-fail")
+	chain := Start(ctx, rop.Fail[int](err)).
+		WhileChain(
+			func(ctx context.Context, v int) Chain[int] {
+				t.Fatalf("inner chain must not be executed on failure start")
+				return FromValue(ctx, v+1)
+			},
+			func(ctx context.Context, v int) bool { return true },
+		)
+
+	out := chain.Result()
+	if out.IsSuccess() || out.Err() == nil || out.Err().Error() != "whilechain-fail" {
+		t.Fatalf("expected failure 'whilechain-fail', got: success=%v, err=%v", out.IsSuccess(), out.Err())
+	}
+}
+
+func TestWhileChain_ShortCircuitOnProcessed(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	base := rop.SetProcessed(rop.Success(1))
+	chain := Start(ctx, base).
+		WhileChain(
+			func(ctx context.Context, v int) Chain[int] {
+				t.Fatalf("inner chain must not be executed on processed start")
+				return FromValue(ctx, v+1)
+			},
+			func(ctx context.Context, v int) bool { return true },
+		)
+
+	out := chain.Result()
+	if !out.IsSuccess() || out.Result() != 1 || !out.IsProcessed() {
+		t.Fatalf("expected unchanged processed success, got: success=%v, val=%v, processed=%v",
+			out.IsSuccess(), out.Result(), out.IsProcessed())
+	}
+}
+
+func TestWhileChain_NoExecutionWhenConditionFalse(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	chain := FromValue(ctx, 5).
+		WhileChain(
+			func(ctx context.Context, v int) Chain[int] {
+				t.Fatalf("inner chain must not be executed when predicate is false")
+				return FromValue(ctx, v+1)
+			},
+			func(ctx context.Context, v int) bool { return false },
+		)
+
+	out := chain.Result()
+	if !out.IsSuccess() || out.Result() != 5 {
+		t.Fatalf("expected unchanged success result 5, got: success=%v, val=%v, err=%v",
+			out.IsSuccess(), out.Result(), out.Err())
+	}
+}
+
+func TestWhileChain_InnerFailureBreaksLoop(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	calls := 0
+	chain := FromValue(ctx, 1).
+		WhileChain(
+			func(ctx context.Context, v int) Chain[int] {
+				calls++
+				return Start(ctx, rop.Fail[int](errors.New("inner-fail")))
+			},
+			func(ctx context.Context, v int) bool { return true },
+		)
+
+	out := chain.Result()
+	if out.IsSuccess() || out.Err() == nil || out.Err().Error() != "inner-fail" {
+		t.Fatalf("expected failure 'inner-fail', got: success=%v, err=%v", out.IsSuccess(), out.Err())
+	}
+	if calls != 1 {
+		t.Fatalf("expected inner chain to execute once before failure, got %d", calls)
+	}
+}
+
+func TestWhileChain_InnerProcessedBreaksLoop(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	calls := 0
+	chain := FromValue(ctx, 1).
+		WhileChain(
+			func(ctx context.Context, v int) Chain[int] {
+				calls++
+				return Start(ctx, rop.SetProcessed(rop.Success(v+1)))
+			},
+			func(ctx context.Context, v int) bool { return true },
+		)
+
+	out := chain.Result()
+	if !out.IsSuccess() || !out.IsProcessed() || out.Result() != 2 {
+		t.Fatalf("expected processed success with value 2, got: success=%v, processed=%v, val=%v, err=%v",
+			out.IsSuccess(), out.IsProcessed(), out.Result(), out.Err())
+	}
+	if calls != 1 {
+		t.Fatalf("expected inner chain to execute once before processed stop, got %d", calls)
+	}
+}
+
+func TestRepeatChainUntil_OuterStateAndInnerIterations(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	type state struct {
+		outer int
+		inner int
+	}
+
+	outerStart := state{outer: 0, inner: 0}
+
+	innerCalls := 0
+	chain := FromValue(ctx, outerStart).
+		RepeatChainUntil(
+			func(ctx context.Context, s state) Chain[state] {
+				innerCalls++
+
+				current := FromValue(ctx, s).
+					Then(func(ctx context.Context, in state) rop.Result[state] {
+						in.inner++
+						return rop.Success(in)
+					}).
+					Then(func(ctx context.Context, in state) rop.Result[state] {
+						in.outer++
+						return rop.Success(in)
+					})
+
+				return current
+			},
+			func(ctx context.Context, s state) bool {
+				return s.outer < 3
+			},
+		)
+
+	out := chain.Result()
+	if !out.IsSuccess() {
+		t.Fatalf("expected success, got: success=%v, err=%v", out.IsSuccess(), out.Err())
+	}
+
+	res := out.Result()
+	if res.outer != 3 {
+		t.Fatalf("expected outer to be 3, got %d", res.outer)
+	}
+	if innerCalls != 3 {
+		t.Fatalf("expected inner chain to run 3 times, got %d", innerCalls)
+	}
+	if res.inner != 3 {
+		t.Fatalf("expected inner to be 3, got %d", res.inner)
+	}
+}
+
+func TestRepeatChainUntil_ShortCircuitOnFailure(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	err := errors.New("repeatchain-fail")
+	chain := Start(ctx, rop.Fail[int](err)).
+		RepeatChainUntil(
+			func(ctx context.Context, v int) Chain[int] {
+				t.Fatalf("inner chain must not be executed on failure start")
+				return FromValue(ctx, v+1)
+			},
+			func(ctx context.Context, v int) bool { return true },
+		)
+
+	out := chain.Result()
+	if out.IsSuccess() || out.Err() == nil || out.Err().Error() != "repeatchain-fail" {
+		t.Fatalf("expected failure 'repeatchain-fail', got: success=%v, err=%v", out.IsSuccess(), out.Err())
+	}
+}
+
+func TestRepeatChainUntil_ShortCircuitOnProcessed(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	base := rop.SetProcessed(rop.Success(1))
+	chain := Start(ctx, base).
+		RepeatChainUntil(
+			func(ctx context.Context, v int) Chain[int] {
+				t.Fatalf("inner chain must not be executed on processed start")
+				return FromValue(ctx, v+1)
+			},
+			func(ctx context.Context, v int) bool { return true },
+		)
+
+	out := chain.Result()
+	if !out.IsSuccess() || out.Result() != 1 || !out.IsProcessed() {
+		t.Fatalf("expected unchanged processed success, got: success=%v, val=%v, processed=%v",
+			out.IsSuccess(), out.Result(), out.IsProcessed())
+	}
+}
+
+func TestRepeatChainUntil_ExecutesOnceWhenUntilFalse(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	calls := 0
+	chain := FromValue(ctx, 1).
+		RepeatChainUntil(
+			func(ctx context.Context, v int) Chain[int] {
+				calls++
+				return FromValue(ctx, v+1)
+			},
+			func(ctx context.Context, v int) bool { return false },
+		)
+
+	out := chain.Result()
+	if !out.IsSuccess() {
+		t.Fatalf("expected success result, got: success=%v, err=%v", out.IsSuccess(), out.Err())
+	}
+	if calls != 1 {
+		t.Fatalf("expected inner chain to execute once, got %d calls", calls)
+	}
+}
+
+func TestRepeatChainUntil_InnerFailureBreaksLoop(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	calls := 0
+	chain := FromValue(ctx, 1).
+		RepeatChainUntil(
+			func(ctx context.Context, v int) Chain[int] {
+				calls++
+				return Start(ctx, rop.Fail[int](errors.New("inner-fail")))
+			},
+			func(ctx context.Context, v int) bool { return true },
+		)
+
+	out := chain.Result()
+	if out.IsSuccess() || out.Err() == nil || out.Err().Error() != "inner-fail" {
+		t.Fatalf("expected failure 'inner-fail', got: success=%v, err=%v", out.IsSuccess(), out.Err())
+	}
+	if calls != 1 {
+		t.Fatalf("expected inner chain to execute once before failure, got %d", calls)
+	}
+}
+
+func TestRepeatChainUntil_InnerProcessedBreaksLoop(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	calls := 0
+	chain := FromValue(ctx, 1).
+		RepeatChainUntil(
+			func(ctx context.Context, v int) Chain[int] {
+				calls++
+				return Start(ctx, rop.SetProcessed(rop.Success(v+1)))
+			},
+			func(ctx context.Context, v int) bool { return true },
+		)
+
+	out := chain.Result()
+	if !out.IsSuccess() || !out.IsProcessed() || out.Result() != 2 {
+		t.Fatalf("expected processed success with value 2, got: success=%v, processed=%v, val=%v, err=%v",
+			out.IsSuccess(), out.IsProcessed(), out.Result(), out.Err())
+	}
+	if calls != 1 {
+		t.Fatalf("expected inner chain to execute once before processed stop, got %d", calls)
+	}
+}
+
 func TestThen_ShortCircuitOnProcessed(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -398,84 +709,136 @@ func TestEnsure_SideEffects(t *testing.T) {
 	sCalled := false
 	fCalled := false
 	pCalled := false
+	cCalled := false
 	out1 := FromValue(ctx, 11).
 		Ensure(func(ctx context.Context, v int) { sCalled = true },
 			func(ctx context.Context, err error) { fCalled = true },
-			func(ctx context.Context, v int) { pCalled = true }).
+			func(ctx context.Context, v int) { pCalled = true },
+			func(ctx context.Context, err error) { cCalled = true }).
 		Result()
 	if !out1.IsSuccess() || out1.Result() != 11 {
 		t.Fatalf("expected success with 11, got: %v, %v", out1.IsSuccess(), out1.Err())
 	}
 
-	if !sCalled || fCalled || pCalled {
-		t.Fatalf("expected success side-effect only; sCalled=%v, fCalled=%v, pCalled=%v",
-			sCalled, fCalled, pCalled)
+	if !sCalled || fCalled || pCalled || cCalled {
+		t.Fatalf("expected success side-effect only; sCalled=%v, fCalled=%v, pCalled=%v, cCalled=%v",
+			sCalled, fCalled, pCalled, cCalled)
 	}
 
 	// failure path (including cancel treated as failure in Ensure)
 	sCalled = false
 	fCalled = false
 	pCalled = false
+	cCalled = false
 	out2 := Start(ctx, rop.Fail[int](errors.New("bad"))).
 		Ensure(func(ctx context.Context, v int) { sCalled = true },
 			func(ctx context.Context, err error) { fCalled = true },
-			func(ctx context.Context, p int) { pCalled = true }).
+			func(ctx context.Context, p int) { pCalled = true },
+			func(ctx context.Context, err error) { cCalled = true }).
 		Result()
 	if out2.IsSuccess() || out2.Err() == nil || out2.Err().Error() != "bad" {
 		t.Fatalf("expected failure 'bad', got: success=%v, err=%v", out2.IsSuccess(), out2.Err())
 	}
 
-	if sCalled || !fCalled || pCalled {
-		t.Fatalf("expected failure side-effect only; sCalled=%v, fCalled=%v, pCalled=%v", sCalled, fCalled, pCalled)
+	if sCalled || !fCalled || pCalled || cCalled {
+		t.Fatalf("expected failure side-effect only; sCalled=%v, fCalled=%v, pCalled=%v, cCalled=%v",
+			sCalled, fCalled, pCalled, cCalled)
+	}
+
+	// cancel path
+	sCalled = false
+	fCalled = false
+	pCalled = false
+	cCalled = false
+	out2_1 := Start(ctx, rop.Cancel[int](errors.New("timeout"))).
+		Ensure(func(ctx context.Context, v int) { sCalled = true },
+			func(ctx context.Context, err error) { fCalled = true },
+			func(ctx context.Context, p int) { pCalled = true },
+			func(ctx context.Context, err error) { cCalled = true }).
+		Result()
+	if out2_1.IsSuccess() || !out2_1.IsCancel() || out2_1.Err() == nil || out2_1.Err().Error() != "timeout" {
+		t.Fatalf("expected cancel 'timeout', got: success=%v, err=%v", out2_1.IsSuccess(), out2_1.Err())
+	}
+
+	if sCalled || fCalled || pCalled || !cCalled {
+		t.Fatalf("expected cancel side-effect only; sCalled=%v, fCalled=%v, pCalled=%v, cCalled=%v",
+			sCalled, fCalled, pCalled, cCalled)
 	}
 
 	// success path processed*
 	sCalled = false
 	fCalled = false
 	pCalled = false
+	cCalled = false
 	out3 := Start(ctx, rop.SetProcessed(rop.Success(11))).
 		Ensure(func(ctx context.Context, v int) { sCalled = true },
 			func(ctx context.Context, err error) { fCalled = true },
-			func(ctx context.Context, v int) { pCalled = true }).
+			func(ctx context.Context, v int) { pCalled = true },
+			func(ctx context.Context, err error) { cCalled = true }).
 		Result()
 
 	if !out3.IsSuccess() || out3.Result() != 11 {
 		t.Fatalf("expected success with 11, got: %v, %v", out3.IsSuccess(), out3.Err())
 	}
 
-	if sCalled || fCalled || !pCalled {
-		t.Fatalf("expected success side-effect only; sCalled=%v, fCalled=%v, pCalled=%v",
-			sCalled, fCalled, pCalled)
+	if sCalled || fCalled || !pCalled || cCalled {
+		t.Fatalf("expected success side-effect only; sCalled=%v, fCalled=%v, pCalled=%v, cCalled=%v",
+			sCalled, fCalled, pCalled, cCalled)
 	}
 
 	// failure path processed* (including cancel treated as failure in Ensure)
 	sCalled = false
 	fCalled = false
 	pCalled = false
+	cCalled = false
 	out4 := Start(ctx, rop.SetProcessed(rop.Fail[int](errors.New("bad")))).
 		Ensure(func(ctx context.Context, v int) { sCalled = true },
 			func(ctx context.Context, err error) { fCalled = true },
-			func(ctx context.Context, p int) { pCalled = true }).
+			func(ctx context.Context, p int) { pCalled = true },
+			func(ctx context.Context, p error) { cCalled = true },
+		).
 		Result()
 
 	if out4.IsSuccess() || out4.Err() == nil || out4.Err().Error() != "bad" {
 		t.Fatalf("expected failure 'bad', got: success=%v, err=%v", out4.IsSuccess(), out4.Err())
 	}
 
-	if sCalled || !fCalled || pCalled {
-		t.Fatalf("expected failure side-effect only; sCalled=%v, fCalled=%v, pCalled=%v",
-			sCalled, fCalled, pCalled)
+	if sCalled || !fCalled || pCalled || cCalled {
+		t.Fatalf("expected failure side-effect only; sCalled=%v, fCalled=%v, pCalled=%v, cCalled=%v",
+			sCalled, fCalled, pCalled, cCalled)
+	}
+
+	// cancel path processed* (including cancel treated as failure in Ensure)
+	sCalled = false
+	fCalled = false
+	pCalled = false
+	cCalled = false
+	out4_1 := Start(ctx, rop.SetProcessed(rop.Cancel[int](errors.New("timeout")))).
+		Ensure(func(ctx context.Context, v int) { sCalled = true },
+			func(ctx context.Context, err error) { fCalled = true },
+			func(ctx context.Context, p int) { pCalled = true },
+			func(ctx context.Context, p error) { cCalled = true },
+		).
+		Result()
+
+	if out4_1.IsSuccess() || !out4_1.IsProcessed() || !out4_1.IsCancel() || out4_1.Err() == nil || out4_1.Err().Error() != "timeout" {
+		t.Fatalf("expected cancel processed 'timeout', got: success=%v, err=%v", out4_1.IsSuccess(), out4_1.Err())
+	}
+
+	if sCalled || fCalled || pCalled || !cCalled {
+		t.Fatalf("expected failure side-effect only; sCalled=%v, fCalled=%v, pCalled=%v, cCalled=%v",
+			sCalled, fCalled, pCalled, cCalled)
 	}
 
 	// nil callbacks should be safe
-	out5 := FromValue(ctx, 1).Ensure(nil, nil, nil).Result()
+	out5 := FromValue(ctx, 1).Ensure(nil, nil, nil, nil).Result()
 	if !out5.IsSuccess() || out5.Result() != 1 {
 		t.Fatalf("expected unchanged success result, got: %v, %v", out5.IsSuccess(), out5.Err())
 	}
 
 	// unchanged success processed
 	out6 := Start(ctx, rop.SetProcessed(rop.Success(1))).
-		Ensure(nil, nil, nil).Result()
+		Ensure(nil, nil, nil, nil).Result()
 	if !out6.IsSuccess() || out6.Result() != 1 || !out6.IsProcessed() {
 		t.Fatalf("expected unchanged processed success result, got: %v, %v, %v",
 			out6.IsSuccess(), out6.Err(), out6.IsProcessed())
@@ -483,7 +846,7 @@ func TestEnsure_SideEffects(t *testing.T) {
 
 	// unchanged fail processed
 	out7 := Start(ctx, rop.SetProcessed(rop.Fail[int](fmt.Errorf("bad processed")))).
-		Ensure(nil, nil, nil).Result()
+		Ensure(nil, nil, nil, nil).Result()
 	if out7.IsSuccess() || !out7.IsFailure() || out7.Err() == nil || !out7.IsProcessed() {
 		t.Fatalf("expected unchanged processed fail result, got: %v, %v, %v",
 			out7.IsSuccess(), out7.Err(), out7.IsProcessed())
