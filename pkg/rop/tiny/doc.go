@@ -9,8 +9,8 @@
 //     (RepeatChainUntil composes a nested Chain on each iteration)
 //   - While/WhileChain: loop while a predicate holds
 //     (WhileChain rebuilds the Chain from the current value each iteration)
+//
 // - Map: transform the successful value to a new Result
-// - Or: combine multiple Chains, returning the first success (then any cancel, otherwise failure)
 // - Ensure: trigger side effects for success, failure, or processed results
 // - Finally: reduce to a concrete value via handlers
 //

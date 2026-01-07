@@ -530,70 +530,6 @@ func TestRepeatChainUntil_OuterStateAndInnerIterations(t *testing.T) {
 	}
 }
 
-func TestOr_ReturnsFirstSuccess(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-
-	c1 := Start(ctx, rop.Fail[int](errors.New("fail-1")))
-	c2 := FromValue(ctx, 42)
-	c3 := FromValue(ctx, 100)
-
-	out := c1.or(c2, c3).Result()
-	if !out.IsSuccess() || out.Result() != 42 {
-		t.Fatalf("expected success with 42 from first successful chain, got: success=%v, val=%v, err=%v",
-			out.IsSuccess(), out.Result(), out.Err())
-	}
-}
-
-func TestOr_PrefersSuccessOverCancel(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-
-	c1 := Start(ctx, rop.Cancel[int](errors.New("cancel")))
-	c2 := FromValue(ctx, 7)
-
-	out := c1.Or(c2).Result()
-	if !out.IsSuccess() || out.Result() != 7 {
-		t.Fatalf("expected success with 7 to override cancel, got: success=%v, val=%v, err=%v",
-			out.IsSuccess(), out.Result(), out.Err())
-	}
-}
-
-func TestOr_ReturnsCancelWhenNoSuccess(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-
-	c1 := Start(ctx, rop.Fail[int](errors.New("fail-1")))
-	c2 := Start(ctx, rop.Cancel[int](errors.New("cancel")))
-	c3 := Start(ctx, rop.Fail[int](errors.New("fail-2")))
-
-	out := c1.or(c2, c3).Result()
-	if !out.IsCancel() {
-		t.Fatalf("expected cancel result when at least one chain is cancelled and none succeed, got: success=%v, cancel=%v, err=%v",
-			out.IsSuccess(), out.IsCancel(), out.Err())
-	}
-	if out.Err() == nil || out.Err().Error() != "cancel" {
-		t.Fatalf("expected cancel error 'cancel', got: %v", out.Err())
-	}
-}
-
-func TestOr_AllFailuresReturnFailure(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-
-	c1 := Start(ctx, rop.Fail[int](errors.New("fail-1")))
-	c2 := Start(ctx, rop.Fail[int](errors.New("fail-2")))
-
-	out := c1.Or(c2).Result()
-	if out.IsSuccess() || out.IsCancel() {
-		t.Fatalf("expected failure when all chains fail, got success=%v, cancel=%v, err=%v",
-			out.IsSuccess(), out.IsCancel(), out.Err())
-	}
-	if out.Err() == nil {
-		t.Fatalf("expected non-nil error for all-failure Or, got nil")
-	}
-}
-
 func TestRepeatChainUntil_ShortCircuitOnFailure(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -773,84 +709,136 @@ func TestEnsure_SideEffects(t *testing.T) {
 	sCalled := false
 	fCalled := false
 	pCalled := false
+	cCalled := false
 	out1 := FromValue(ctx, 11).
 		Ensure(func(ctx context.Context, v int) { sCalled = true },
 			func(ctx context.Context, err error) { fCalled = true },
-			func(ctx context.Context, v int) { pCalled = true }).
+			func(ctx context.Context, v int) { pCalled = true },
+			func(ctx context.Context, err error) { cCalled = true }).
 		Result()
 	if !out1.IsSuccess() || out1.Result() != 11 {
 		t.Fatalf("expected success with 11, got: %v, %v", out1.IsSuccess(), out1.Err())
 	}
 
-	if !sCalled || fCalled || pCalled {
-		t.Fatalf("expected success side-effect only; sCalled=%v, fCalled=%v, pCalled=%v",
-			sCalled, fCalled, pCalled)
+	if !sCalled || fCalled || pCalled || cCalled {
+		t.Fatalf("expected success side-effect only; sCalled=%v, fCalled=%v, pCalled=%v, cCalled=%v",
+			sCalled, fCalled, pCalled, cCalled)
 	}
 
 	// failure path (including cancel treated as failure in Ensure)
 	sCalled = false
 	fCalled = false
 	pCalled = false
+	cCalled = false
 	out2 := Start(ctx, rop.Fail[int](errors.New("bad"))).
 		Ensure(func(ctx context.Context, v int) { sCalled = true },
 			func(ctx context.Context, err error) { fCalled = true },
-			func(ctx context.Context, p int) { pCalled = true }).
+			func(ctx context.Context, p int) { pCalled = true },
+			func(ctx context.Context, err error) { cCalled = true }).
 		Result()
 	if out2.IsSuccess() || out2.Err() == nil || out2.Err().Error() != "bad" {
 		t.Fatalf("expected failure 'bad', got: success=%v, err=%v", out2.IsSuccess(), out2.Err())
 	}
 
-	if sCalled || !fCalled || pCalled {
-		t.Fatalf("expected failure side-effect only; sCalled=%v, fCalled=%v, pCalled=%v", sCalled, fCalled, pCalled)
+	if sCalled || !fCalled || pCalled || cCalled {
+		t.Fatalf("expected failure side-effect only; sCalled=%v, fCalled=%v, pCalled=%v, cCalled=%v",
+			sCalled, fCalled, pCalled, cCalled)
+	}
+
+	// cancel path
+	sCalled = false
+	fCalled = false
+	pCalled = false
+	cCalled = false
+	out2_1 := Start(ctx, rop.Cancel[int](errors.New("timeout"))).
+		Ensure(func(ctx context.Context, v int) { sCalled = true },
+			func(ctx context.Context, err error) { fCalled = true },
+			func(ctx context.Context, p int) { pCalled = true },
+			func(ctx context.Context, err error) { cCalled = true }).
+		Result()
+	if out2_1.IsSuccess() || !out2_1.IsCancel() || out2_1.Err() == nil || out2_1.Err().Error() != "timeout" {
+		t.Fatalf("expected cancel 'timeout', got: success=%v, err=%v", out2_1.IsSuccess(), out2_1.Err())
+	}
+
+	if sCalled || fCalled || pCalled || !cCalled {
+		t.Fatalf("expected cancel side-effect only; sCalled=%v, fCalled=%v, pCalled=%v, cCalled=%v",
+			sCalled, fCalled, pCalled, cCalled)
 	}
 
 	// success path processed*
 	sCalled = false
 	fCalled = false
 	pCalled = false
+	cCalled = false
 	out3 := Start(ctx, rop.SetProcessed(rop.Success(11))).
 		Ensure(func(ctx context.Context, v int) { sCalled = true },
 			func(ctx context.Context, err error) { fCalled = true },
-			func(ctx context.Context, v int) { pCalled = true }).
+			func(ctx context.Context, v int) { pCalled = true },
+			func(ctx context.Context, err error) { cCalled = true }).
 		Result()
 
 	if !out3.IsSuccess() || out3.Result() != 11 {
 		t.Fatalf("expected success with 11, got: %v, %v", out3.IsSuccess(), out3.Err())
 	}
 
-	if sCalled || fCalled || !pCalled {
-		t.Fatalf("expected success side-effect only; sCalled=%v, fCalled=%v, pCalled=%v",
-			sCalled, fCalled, pCalled)
+	if sCalled || fCalled || !pCalled || cCalled {
+		t.Fatalf("expected success side-effect only; sCalled=%v, fCalled=%v, pCalled=%v, cCalled=%v",
+			sCalled, fCalled, pCalled, cCalled)
 	}
 
 	// failure path processed* (including cancel treated as failure in Ensure)
 	sCalled = false
 	fCalled = false
 	pCalled = false
+	cCalled = false
 	out4 := Start(ctx, rop.SetProcessed(rop.Fail[int](errors.New("bad")))).
 		Ensure(func(ctx context.Context, v int) { sCalled = true },
 			func(ctx context.Context, err error) { fCalled = true },
-			func(ctx context.Context, p int) { pCalled = true }).
+			func(ctx context.Context, p int) { pCalled = true },
+			func(ctx context.Context, p error) { cCalled = true },
+		).
 		Result()
 
 	if out4.IsSuccess() || out4.Err() == nil || out4.Err().Error() != "bad" {
 		t.Fatalf("expected failure 'bad', got: success=%v, err=%v", out4.IsSuccess(), out4.Err())
 	}
 
-	if sCalled || !fCalled || pCalled {
-		t.Fatalf("expected failure side-effect only; sCalled=%v, fCalled=%v, pCalled=%v",
-			sCalled, fCalled, pCalled)
+	if sCalled || !fCalled || pCalled || cCalled {
+		t.Fatalf("expected failure side-effect only; sCalled=%v, fCalled=%v, pCalled=%v, cCalled=%v",
+			sCalled, fCalled, pCalled, cCalled)
+	}
+
+	// cancel path processed* (including cancel treated as failure in Ensure)
+	sCalled = false
+	fCalled = false
+	pCalled = false
+	cCalled = false
+	out4_1 := Start(ctx, rop.SetProcessed(rop.Cancel[int](errors.New("timeout")))).
+		Ensure(func(ctx context.Context, v int) { sCalled = true },
+			func(ctx context.Context, err error) { fCalled = true },
+			func(ctx context.Context, p int) { pCalled = true },
+			func(ctx context.Context, p error) { cCalled = true },
+		).
+		Result()
+
+	if out4_1.IsSuccess() || !out4_1.IsProcessed() || !out4_1.IsCancel() || out4_1.Err() == nil || out4_1.Err().Error() != "timeout" {
+		t.Fatalf("expected cancel processed 'timeout', got: success=%v, err=%v", out4_1.IsSuccess(), out4_1.Err())
+	}
+
+	if sCalled || fCalled || pCalled || !cCalled {
+		t.Fatalf("expected failure side-effect only; sCalled=%v, fCalled=%v, pCalled=%v, cCalled=%v",
+			sCalled, fCalled, pCalled, cCalled)
 	}
 
 	// nil callbacks should be safe
-	out5 := FromValue(ctx, 1).Ensure(nil, nil, nil).Result()
+	out5 := FromValue(ctx, 1).Ensure(nil, nil, nil, nil).Result()
 	if !out5.IsSuccess() || out5.Result() != 1 {
 		t.Fatalf("expected unchanged success result, got: %v, %v", out5.IsSuccess(), out5.Err())
 	}
 
 	// unchanged success processed
 	out6 := Start(ctx, rop.SetProcessed(rop.Success(1))).
-		Ensure(nil, nil, nil).Result()
+		Ensure(nil, nil, nil, nil).Result()
 	if !out6.IsSuccess() || out6.Result() != 1 || !out6.IsProcessed() {
 		t.Fatalf("expected unchanged processed success result, got: %v, %v, %v",
 			out6.IsSuccess(), out6.Err(), out6.IsProcessed())
@@ -858,7 +846,7 @@ func TestEnsure_SideEffects(t *testing.T) {
 
 	// unchanged fail processed
 	out7 := Start(ctx, rop.SetProcessed(rop.Fail[int](fmt.Errorf("bad processed")))).
-		Ensure(nil, nil, nil).Result()
+		Ensure(nil, nil, nil, nil).Result()
 	if out7.IsSuccess() || !out7.IsFailure() || out7.Err() == nil || !out7.IsProcessed() {
 		t.Fatalf("expected unchanged processed fail result, got: %v, %v, %v",
 			out7.IsSuccess(), out7.Err(), out7.IsProcessed())

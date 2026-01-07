@@ -1,0 +1,6 @@
+go test ./pkg/rop/tiny -coverprofile=tiny.out
+
+go tool cover -func=tiny        //   .out (without out!!)
+or
+go tool cover -func=c:\_work\rop3\tiny           //.out (without .out!!)
+
