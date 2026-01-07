@@ -32,23 +32,23 @@ func (c Chain[T]) Then(onSuccess func(ctx context.Context, t T) rop.Result[T]) C
 	return Chain[T]{ctx: c.ctx, res: onSuccess(c.ctx, c.res.Result())}
 }
 
-func (c Chain[T]) RepeatUntil(onSuccess func(ctx context.Context, t T) rop.Result[T],
-	until func(ctx context.Context, t T) bool) Chain[T] {
+//func (c Chain[T]) RepeatUntil(onSuccess func(ctx context.Context, t T) rop.Result[T],
+//	until func(ctx context.Context, t T) bool) Chain[T] {
+//
+//	if c.res.IsFailure() || c.res.IsCancel() || c.res.IsProcessed() {
+//		return c
+//	}
+//
+//	for {
+//		c = c.Then(onSuccess)
+//
+//		if c.res.IsFailure() || c.res.IsCancel() || c.res.IsProcessed() || !until(c.ctx, c.res.Result()) {
+//			return c
+//		}
+//	}
+//}
 
-	if c.res.IsFailure() || c.res.IsCancel() || c.res.IsProcessed() {
-		return c
-	}
-
-	for {
-		c = c.Then(onSuccess)
-
-		if c.res.IsFailure() || c.res.IsCancel() || c.res.IsProcessed() || !until(c.ctx, c.res.Result()) {
-			return c
-		}
-	}
-}
-
-func (c Chain[T]) RepeatChainUntil(inC func(ctx context.Context, t T) Chain[T],
+func (c Chain[T]) RepeatUntil(inC func(ctx context.Context, t T) Chain[T],
 	until func(ctx context.Context, t T) bool) Chain[T] {
 
 	if c.res.IsFailure() || c.res.IsCancel() || c.res.IsProcessed() {
@@ -64,16 +64,16 @@ func (c Chain[T]) RepeatChainUntil(inC func(ctx context.Context, t T) Chain[T],
 	}
 }
 
-func (c Chain[T]) While(onSuccess func(ctx context.Context, t T) rop.Result[T],
-	while func(ctx context.Context, t T) bool) Chain[T] {
+//func (c Chain[T]) While(onSuccess func(ctx context.Context, t T) rop.Result[T],
+//	while func(ctx context.Context, t T) bool) Chain[T] {
+//
+//	for !c.res.IsFailure() && !c.res.IsCancel() && !c.res.IsProcessed() && while(c.ctx, c.res.Result()) {
+//		c = c.Then(onSuccess)
+//	}
+//	return c
+//}
 
-	for !c.res.IsFailure() && !c.res.IsCancel() && !c.res.IsProcessed() && while(c.ctx, c.res.Result()) {
-		c = c.Then(onSuccess)
-	}
-	return c
-}
-
-func (c Chain[T]) WhileChain(inC func(ctx context.Context, t T) Chain[T], while func(ctx context.Context, t T) bool) Chain[T] {
+func (c Chain[T]) While(inC func(ctx context.Context, t T) Chain[T], while func(ctx context.Context, t T) bool) Chain[T] {
 
 	for !c.res.IsFailure() && !c.res.IsCancel() && !c.res.IsProcessed() && while(c.ctx, c.res.Result()) {
 		c = inC(c.ctx, c.res.Result())
